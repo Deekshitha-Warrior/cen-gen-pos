@@ -54,6 +54,10 @@ import { InventoryTable } from '../components/inventory/InventoryTable'
 import { CategoryManagerView } from '../components/inventory/CategoryManagerView'
 import { ExpensesView } from '../components/expenses/ExpensesView'
 import { expenseService, type ExpenseRecord } from '../services/expenseService'
+import { useNavigationStore } from '../store/navigationStore'
+import { useHardwareBarcodeScanner } from '../hooks/useHardwareBarcodeScanner'
+import { BarcodeRedirectDialog } from '../components/pos/BarcodeRedirectDialog'
+import { exportAnalyticsToCSV, exportAnalyticsToPDF } from '../services/analyticsExport'
 import { BRAND_EN } from '../lib/brand'
 import {
   ResponsiveContainer,
@@ -177,7 +181,31 @@ export default function Dashboard() {
     if (location.pathname === '/expenses' || location.pathname === '/dashboard/expenses') return 'expenses'
     return 'billing'
   })
+  const { setCurrentTab } = useNavigationStore()
+  const [cartItemToInject, setCartItemToInject] = useState<string | null>(null)
+
+  // Sync tab with navigation store
+  useEffect(() => {
+    setCurrentTab(tab)
+  }, [tab, setCurrentTab])
+
+  // Global hardware scanner listener
+  useHardwareBarcodeScanner({
+    isBillingActive: tab === 'billing',
+    onScanDirect: (barcode) => {
+      setCartItemToInject(barcode)
+    },
+  })
+
+  const handleNavigateToBillingFromDialog = (barcode: string) => {
+    setTab('billing')
+    setCurrentTab('billing')
+    navigate('/dashboard', { replace: true })
+    setCartItemToInject(barcode)
+  }
+
   const [posAnalyticsTab, setPosAnalyticsTab] = useState<PosAnalyticsTab>('revenue')
+  const [exportingPdf, setExportingPdf] = useState(false)
   const [inventorySearch, setInventorySearch] = useState('')
   const [loading, setLoading] = useState(false)
   const [imageUploading, setImageUploading] = useState(false)
@@ -276,6 +304,7 @@ export default function Dashboard() {
       if (!staffAllowedTabs.includes(tabKey)) return
     }
     setTab(tabKey)
+    setCurrentTab(tabKey)
     if (tabKey === 'pos_analytics') {
       navigate('/dashboard?tab=pos_analytics', { replace: true })
     } else if (tabKey === 'expenses') {
@@ -2163,9 +2192,62 @@ export default function Dashboard() {
         {/* ——— POS ANALYTICS ——— */}
         {tab === 'pos_analytics' && (
           <div className="space-y-6">
-            <div>
-              <h2 className="text-[24px] font-bold text-[#111111]">POS Analytics</h2>
-              <p className="text-[13px] text-[#6B7280]">Real time store & channel insights</p>
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div>
+                <h2 className="text-[24px] font-black text-[#111111] tracking-tight">POS Analytics</h2>
+                <p className="text-[13px] text-[#6B7280]">Real time store & channel intelligence</p>
+              </div>
+
+              {/* Export Actions */}
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => {
+                    exportAnalyticsToCSV({
+                      data: analytics,
+                      activeTab: posAnalyticsTab,
+                      datePreset: analyticsDatePreset,
+                      dateFrom: analyticsDateFrom,
+                      dateTo: analyticsDateTo,
+                    })
+                  }}
+                  className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-white border border-[#E8D399] text-[#0A0A0A] font-bold text-xs hover:bg-[#FBFAF6] shadow-xs transition-all cursor-pointer hover:scale-[1.02]"
+                  title="Export current analytics view to CSV"
+                >
+                  <Download size={14} className="text-[#B48811]" />
+                  <span>Export CSV</span>
+                </button>
+
+                <button
+                  type="button"
+                  disabled={exportingPdf}
+                  onClick={async () => {
+                    try {
+                      setExportingPdf(true)
+                      await exportAnalyticsToPDF({
+                        data: analytics,
+                        activeTab: posAnalyticsTab,
+                        datePreset: analyticsDatePreset,
+                        dateFrom: analyticsDateFrom,
+                        dateTo: analyticsDateTo,
+                      })
+                    } catch (err) {
+                      console.error('PDF export error:', err)
+                    } finally {
+                      setExportingPdf(false)
+                    }
+                  }}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-[#0A0A0A] border border-[#D4AF37] text-[#D4AF37] font-black text-xs hover:bg-[#1A1A1A] shadow-md transition-all cursor-pointer hover:scale-[1.02] disabled:opacity-60"
+                  title="Export formatted executive PDF with chart diagrams"
+                >
+                  {exportingPdf ? (
+                    <RefreshCw size={14} className="animate-spin text-[#D4AF37]" />
+                  ) : (
+                    <FileText size={14} className="text-[#D4AF37]" />
+                  )}
+                  <span>{exportingPdf ? 'Generating PDF...' : 'Export PDF (Charts)'}</span>
+                </button>
+              </div>
             </div>
 
             <div className="flex flex-col gap-4 border-b border-[#E7E7E7] pb-4 md:flex-row md:items-center md:justify-between">
@@ -2852,7 +2934,11 @@ export default function Dashboard() {
         {/* ── BILLING PANEL ── */}
         {tab === 'billing' && (
           <div className="-m-4 sm:-m-6 lg:-m-8">
-            <Pos isEmbedded />
+            <Pos
+              isEmbedded
+              externalScannedCode={cartItemToInject}
+              onCodeProcessed={() => setCartItemToInject(null)}
+            />
           </div>
         )}
 
@@ -4070,6 +4156,9 @@ export default function Dashboard() {
           </div>
         )
       })()}
+
+      {/* Global Barcode Navigation Dialog */}
+      <BarcodeRedirectDialog onNavigateToBilling={handleNavigateToBillingFromDialog} />
     </div>
   )
 }

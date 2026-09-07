@@ -161,6 +161,13 @@ export const CreateBarcodeModal: React.FC<CreateBarcodeModalProps> = ({
   const currentSizeConfig: LabelSizeConfig =
     allSizes.find((s) => s.id === settings.selectedSizeId) || allSizes[0]
 
+  // Determine if currently selected item / variant already has a barcode assigned
+  const assignedBarcode = selectedVariant
+    ? (selectedVariant.barcode && selectedVariant.barcode.trim().length > 0 ? selectedVariant.barcode.trim() : null)
+    : (selectedProduct?.has_variants ? null : (selectedProduct?.barcode && selectedProduct.barcode.trim().length > 0 ? selectedProduct.barcode.trim() : null))
+
+  const isBarcodeAlreadyAssigned = Boolean(assignedBarcode)
+
   const handleSelectVariant = (varId: string) => {
     const v = variants.find((item) => item.id === varId)
     if (!v) return
@@ -183,6 +190,15 @@ export const CreateBarcodeModal: React.FC<CreateBarcodeModalProps> = ({
       return
     }
 
+    // Check if item already has a barcode assigned in stock management
+    if (isBarcodeAlreadyAssigned) {
+      setStatusMessage({
+        type: 'error',
+        text: `Barcode already exists for this item (${assignedBarcode}). Please check in Stock Management.`,
+      })
+      return
+    }
+
     if (!itemCode.trim()) {
       setStatusMessage({ type: 'error', text: 'Item Code / Barcode is required' })
       return
@@ -190,6 +206,18 @@ export const CreateBarcodeModal: React.FC<CreateBarcodeModalProps> = ({
 
     if (noOfLabels <= 0) {
       setStatusMessage({ type: 'error', text: 'Number of labels must be at least 1' })
+      return
+    }
+
+    // Check if already present in the current queue
+    const alreadyInQueue = queue.some(
+      (it) => it.productId === selectedProduct.id && (selectedVariant ? it.variantId === selectedVariant.id : !it.variantId)
+    )
+    if (alreadyInQueue) {
+      setStatusMessage({
+        type: 'error',
+        text: `This item (${selectedProduct.name}${selectedVariant ? ` - ${selectedVariant.variantName}` : ''}) is already added in the queue.`,
+      })
       return
     }
 
@@ -305,16 +333,19 @@ export const CreateBarcodeModal: React.FC<CreateBarcodeModalProps> = ({
     const labelsHtml: string[] = []
     selectedItems.forEach((item) => {
       const count = Math.max(1, item.noOfLabels)
+      const fullTitle = `${item.productName}${item.variantName ? ` (${item.variantName})` : ''}`
       for (let i = 0; i < count; i++) {
         labelsHtml.push(`
           <div class="label-sticker">
-            <div class="header">${item.header}</div>
-            <svg class="barcode-svg" data-code="${item.barcodeValue}"></svg>
-            <div class="item-code">${item.barcodeValue}</div>
-            ${item.line1 ? `<div class="line line1">${item.line1}</div>` : ''}
-            ${item.line2 ? `<div class="line line2">${item.line2}</div>` : ''}
-            ${item.line3 ? `<div class="line line3">${item.line3}</div>` : ''}
-            ${item.line4 ? `<div class="line line4">${item.line4}</div>` : ''}
+            <div class="header">${item.header || BRAND_EN}</div>
+            <div class="prod-title">${fullTitle}</div>
+            <div class="barcode-box">
+              <svg class="barcode-svg" data-code="${item.barcodeValue}"></svg>
+            </div>
+            <div class="footer">
+              <span>${item.line2 ? `<span class="tag">${item.line2}</span>` : '<span class="tag">CLAD RETAIL</span>'}</span>
+              <span class="price">₹${item.price}</span>
+            </div>
           </div>
         `)
       }
@@ -326,70 +357,98 @@ export const CreateBarcodeModal: React.FC<CreateBarcodeModalProps> = ({
       <html>
         <head>
           <title>CLAD Barcode Labels</title>
-          <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
+          <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
           <style>
             @page {
               size: ${currentSizeConfig.widthMm * currentSizeConfig.labelsPerRow + currentSizeConfig.horizontalGapMm}mm ${currentSizeConfig.heightMm}mm;
-              margin: 0;
+              margin: 0 !important;
             }
-            body {
+            * {
+              box-sizing: border-box;
               margin: 0;
               padding: 0;
+            }
+            body {
+              margin: 0 !important;
+              padding: 0 !important;
               font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
               background: #fff;
               -webkit-print-color-adjust: exact;
+              print-color-adjust: exact;
             }
             .grid-container {
               display: grid;
               grid-template-columns: repeat(${currentSizeConfig.labelsPerRow}, ${currentSizeConfig.widthMm}mm);
               column-gap: ${currentSizeConfig.horizontalGapMm}mm;
               row-gap: 2mm;
-              padding: 1mm;
+              padding: 0.5mm;
             }
             .label-sticker {
               width: ${currentSizeConfig.widthMm}mm;
               height: ${currentSizeConfig.heightMm}mm;
               box-sizing: border-box;
-              padding: 1.5mm;
+              padding: 0.8mm 1.5mm;
               display: flex;
               flex-direction: column;
+              justify-content: space-between;
               align-items: center;
-              justify-content: center;
               text-align: center;
               overflow: hidden;
               page-break-inside: avoid;
             }
             .header {
-              font-size: 8pt;
+              font-size: 7.5pt;
               font-weight: 900;
               letter-spacing: 0.5px;
               text-transform: uppercase;
               line-height: 1;
               color: #000;
             }
-            .barcode-svg {
-              width: 90%;
-              max-height: 12mm;
-              margin: 0.5mm 0;
-            }
-            .item-code {
-              font-family: monospace;
-              font-size: 7.5pt;
-              font-weight: 700;
-              line-height: 1;
-            }
-            .line {
+            .prod-title {
               font-size: 6.5pt;
-              line-height: 1.1;
-              max-width: 100%;
+              font-weight: 700;
               white-space: nowrap;
               overflow: hidden;
               text-overflow: ellipsis;
+              max-width: 96%;
+              margin-top: 0.3mm;
+              color: #111;
+              line-height: 1;
             }
-            .line1 { font-weight: 700; color: #111; }
-            .line2 { font-weight: 600; color: #333; }
-            .line3 { font-weight: 800; color: #000; }
-            .line4 { font-size: 6pt; color: #555; }
+            .barcode-box {
+              width: 100%;
+              display: flex;
+              justify-content: center;
+              align-items: center;
+              overflow: hidden;
+              margin: 0.2mm 0;
+            }
+            .barcode-svg {
+              display: block;
+              margin: 0 auto;
+              max-width: 95%;
+              height: auto;
+            }
+            .footer {
+              width: 100%;
+              display: flex;
+              justify-content: space-between;
+              align-items: flex-end;
+              border-top: 0.5pt solid #000;
+              padding-top: 0.4mm;
+              line-height: 1;
+              margin-top: 0.2mm;
+            }
+            .tag {
+              font-size: 5.5pt;
+              font-weight: 700;
+              color: #444;
+            }
+            .price {
+              font-size: 8.5pt;
+              font-weight: 900;
+              color: #000;
+            }
           </style>
         </head>
         <body>
@@ -404,10 +463,13 @@ export const CreateBarcodeModal: React.FC<CreateBarcodeModalProps> = ({
                 if (code && window.JsBarcode) {
                   window.JsBarcode(svg, code, {
                     format: 'CODE128',
-                    width: 1.2,
-                    height: 25,
-                    displayValue: false,
-                    margin: 0
+                    width: ${currentSizeConfig.widthMm <= 38 ? 0.85 : 0.95},
+                    height: ${currentSizeConfig.heightMm <= 25 ? 13 : 16},
+                    fontSize: 7.5,
+                    font: 'Arial, sans-serif',
+                    margin: 0,
+                    textMargin: 1,
+                    displayValue: true
                   });
                 }
               });
@@ -483,7 +545,7 @@ export const CreateBarcodeModal: React.FC<CreateBarcodeModalProps> = ({
               </div>
               <button
                 onClick={() => setStatusMessage(null)}
-                className="text-gray-500 hover:text-black font-black"
+                className="text-gray-500 hover:text-black font-black cursor-pointer"
               >
                 ✕
               </button>
@@ -497,13 +559,38 @@ export const CreateBarcodeModal: React.FC<CreateBarcodeModalProps> = ({
               <div className="grid grid-cols-1 lg:grid-cols-[1fr_260px] gap-6 items-start">
                 {/* LEFT SECTION: Form Inputs */}
                 <div className="space-y-4">
-                  <span className="block text-xs font-black uppercase tracking-wider text-gray-800">
-                    Enter item details to add for barcode
-                  </span>
+                  <div className="flex items-center justify-between">
+                    <span className="block text-xs font-black uppercase tracking-wider text-gray-800">
+                      Enter item details to add for barcode
+                    </span>
+                    {selectedProduct && (
+                      <span className="text-[11px] font-bold text-gray-500">
+                        Selected: <strong className="text-gray-900">{selectedProduct.name}</strong>
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Duplicate Barcode Alert Warning Banner */}
+                  {isBarcodeAlreadyAssigned && (
+                    <div className="p-3 bg-red-50 border-2 border-red-300 rounded-xl flex items-start gap-2.5 text-xs text-red-900 font-bold animate-in fade-in duration-150">
+                      <AlertCircle size={18} className="text-red-600 shrink-0 mt-0.5" />
+                      <div>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span>Barcode already exists for this item:</span>
+                          <span className="font-mono bg-white px-2 py-0.5 rounded border border-red-300 text-red-950 font-black">
+                            {assignedBarcode}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-red-700 font-semibold mt-1">
+                          Barcode already exists. Please check in Stock Management to view, print, or manage this SKU.
+                        </p>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Row 1: Item Name & Item Code */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    {/* Item Name Dropdown / Combobox with + ADD ITEM at top */}
+                    {/* Item Name Dropdown / Combobox with markers */}
                     <div className="relative" ref={dropdownRef}>
                       <label className="block text-[11px] font-black uppercase tracking-wider text-gray-700 mb-1">
                         Item Name <span className="text-red-500">*</span>
@@ -525,9 +612,9 @@ export const CreateBarcodeModal: React.FC<CreateBarcodeModalProps> = ({
                         <ChevronDown size={14} className="text-gray-400 shrink-0" />
                       </div>
 
-                      {/* Dropdown Menu */}
+                      {/* Dropdown Menu with Visual Markers */}
                       {dropdownOpen && (
-                        <div className="absolute left-0 top-full mt-1 w-full sm:w-[380px] bg-white rounded-2xl border border-gray-300 shadow-2xl z-50 overflow-hidden animate-in fade-in duration-100">
+                        <div className="absolute left-0 top-full mt-1 w-full sm:w-[420px] bg-white rounded-2xl border border-gray-300 shadow-2xl z-50 overflow-hidden animate-in fade-in duration-100">
                           {/* Product Items List */}
                           <div className="max-h-60 overflow-y-auto divide-y divide-gray-100">
                             {filteredProducts.length === 0 ? (
@@ -535,28 +622,46 @@ export const CreateBarcodeModal: React.FC<CreateBarcodeModalProps> = ({
                                 No matching products found.
                               </div>
                             ) : (
-                              filteredProducts.map((p) => (
-                                <div
-                                  key={p.id}
-                                  onClick={() => selectProductItem(p)}
-                                  className="p-2.5 hover:bg-[#FBFAF6] cursor-pointer flex items-center justify-between text-xs transition-colors"
-                                >
-                                  <div className="min-w-0 pr-2">
-                                    <p className="font-bold text-gray-900 truncate">
-                                      {p.name}
-                                    </p>
-                                    <p className="text-[10px] text-gray-400 font-mono">
-                                      {p.barcode || 'No barcode'}
-                                    </p>
+                              filteredProducts.map((p) => {
+                                const hasExistingBarcode = Boolean(p.barcode && p.barcode.trim().length > 0)
+                                return (
+                                  <div
+                                    key={p.id}
+                                    onClick={() => selectProductItem(p)}
+                                    className="p-2.5 hover:bg-[#FBFAF6] cursor-pointer flex items-center justify-between text-xs transition-colors"
+                                  >
+                                    <div className="min-w-0 pr-2">
+                                      <div className="flex items-center gap-1.5 flex-wrap">
+                                        <p className="font-bold text-gray-900 truncate">
+                                          {p.name}
+                                        </p>
+                                        {p.has_variants ? (
+                                          <span className="px-1.5 py-0.2 rounded text-[9px] font-black bg-purple-100 text-purple-800 border border-purple-200">
+                                            Variants
+                                          </span>
+                                        ) : hasExistingBarcode ? (
+                                          <span className="px-1.5 py-0.2 rounded text-[9px] font-black bg-amber-100 text-amber-900 border border-amber-300">
+                                            Barcode: {p.barcode}
+                                          </span>
+                                        ) : (
+                                          <span className="px-1.5 py-0.2 rounded text-[9px] font-black bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                            No Barcode
+                                          </span>
+                                        )}
+                                      </div>
+                                      <p className="text-[10px] text-gray-400 font-mono mt-0.5">
+                                        {p.category || 'General'}
+                                      </p>
+                                    </div>
+                                    <div className="text-right shrink-0">
+                                      <span className="font-black text-gray-900">₹{p.price}</span>
+                                      <span className="block text-[10px] text-gray-500 font-semibold">
+                                        Stock: {p.stock_quantity ?? 0}
+                                      </span>
+                                    </div>
                                   </div>
-                                  <div className="text-right shrink-0">
-                                    <span className="font-black text-gray-900">₹{p.price}</span>
-                                    <span className="block text-[10px] text-gray-500 font-semibold">
-                                      Stock: {p.stock_quantity ?? 0}
-                                    </span>
-                                  </div>
-                                </div>
-                              ))
+                                )
+                              })
                             )}
                           </div>
                         </div>
@@ -599,13 +704,25 @@ export const CreateBarcodeModal: React.FC<CreateBarcodeModalProps> = ({
                           type="button"
                           onClick={() => {
                             if (!selectedProduct) return
-                            const itemsToAdd: BarcodeQueueItem[] = variants.map((v) => ({
+                            const unassignedVariants = variants.filter(
+                              (v) => !v.barcode || !v.barcode.trim()
+                            )
+
+                            if (unassignedVariants.length === 0) {
+                              setStatusMessage({
+                                type: 'error',
+                                text: `All variants for "${selectedProduct.name}" already have barcodes assigned. Please check in Stock Management.`,
+                              })
+                              return
+                            }
+
+                            const itemsToAdd: BarcodeQueueItem[] = unassignedVariants.map((v) => ({
                               id: `queue_${Date.now()}_${v.id}_${Math.random()}`,
                               productId: selectedProduct.id,
                               productName: selectedProduct.name,
                               variantId: v.id,
                               variantName: v.variantName,
-                              barcodeValue: v.barcode || `CLAD${Math.floor(1000000 + Math.random() * 9000000)}`,
+                              barcodeValue: `CLAD${Math.floor(1000000 + Math.random() * 9000000)}`,
                               price: v.price || selectedProduct.price,
                               costPrice: selectedProduct.cost_price || 0,
                               noOfLabels: noOfLabels || 2,
@@ -616,15 +733,25 @@ export const CreateBarcodeModal: React.FC<CreateBarcodeModalProps> = ({
                               line4: line4.trim(),
                               selected: true,
                             }))
+
                             setQueue((prev) => [...prev, ...itemsToAdd])
-                            setStatusMessage({
-                              type: 'success',
-                              text: `Added all ${variants.length} variants for "${selectedProduct.name}" to the queue!`,
-                            })
+
+                            if (unassignedVariants.length < variants.length) {
+                              const skipped = variants.length - unassignedVariants.length
+                              setStatusMessage({
+                                type: 'success',
+                                text: `Added ${unassignedVariants.length} new variants to queue. Skipped ${skipped} variant(s) that already have barcodes.`,
+                              })
+                            } else {
+                              setStatusMessage({
+                                type: 'success',
+                                text: `Added all ${variants.length} variants for "${selectedProduct.name}" to the queue!`,
+                              })
+                            }
                           }}
                           className="px-2.5 py-1 rounded-md bg-[#0A0A0A] text-[#D4AF37] border border-[#D4AF37] text-[10px] font-black uppercase tracking-wider hover:bg-[#1A1A1A] transition-all flex items-center gap-1 cursor-pointer shadow-xs"
                         >
-                          <Plus size={11} /> Add All {variants.length} Variants to Queue
+                          <Plus size={11} /> Add Unassigned Variants ({variants.filter(v => !v.barcode?.trim()).length})
                         </button>
                       </div>
                       <select
@@ -632,11 +759,14 @@ export const CreateBarcodeModal: React.FC<CreateBarcodeModalProps> = ({
                         onChange={(e) => handleSelectVariant(e.target.value)}
                         className="w-full h-9 px-3 rounded-lg border border-amber-300 bg-white text-xs font-bold text-gray-900 outline-none"
                       >
-                        {variants.map((v) => (
-                          <option key={v.id} value={v.id}>
-                            {v.variantName} (Barcode: {v.barcode || 'Auto'}) — ₹{v.price} — Stock: {v.stock}
-                          </option>
-                        ))}
+                        {variants.map((v) => {
+                          const hasVarBarcode = Boolean(v.barcode && v.barcode.trim())
+                          return (
+                            <option key={v.id} value={v.id}>
+                              {v.variantName} {hasVarBarcode ? `— [Barcode: ${v.barcode}] (Already Assigned)` : '— [No Barcode]'} — ₹{v.price} — Stock: {v.stock}
+                            </option>
+                          )
+                        })}
                       </select>
                     </div>
                   )}
@@ -768,9 +898,13 @@ export const CreateBarcodeModal: React.FC<CreateBarcodeModalProps> = ({
                   <button
                     type="button"
                     onClick={handleAddToQueue}
-                    className="w-full mt-3 py-2.5 rounded-xl bg-[#0A0A0A] border border-[#D4AF37] text-[#D4AF37] text-xs font-black uppercase tracking-wider hover:bg-[#1A1A1A] transition-all shadow-md flex items-center justify-center gap-1.5 cursor-pointer"
+                    className={`w-full mt-3 py-2.5 rounded-xl border text-xs font-black uppercase tracking-wider transition-all shadow-md flex items-center justify-center gap-1.5 cursor-pointer ${
+                      isBarcodeAlreadyAssigned
+                        ? 'bg-amber-50 border-amber-300 text-amber-900 hover:bg-amber-100'
+                        : 'bg-[#0A0A0A] border-[#D4AF37] text-[#D4AF37] hover:bg-[#1A1A1A]'
+                    }`}
                   >
-                    <Plus size={14} /> Add for Barcode
+                    <Plus size={14} /> {isBarcodeAlreadyAssigned ? 'Barcode Already Exists' : 'Add for Barcode'}
                   </button>
                 </div>
               </div>

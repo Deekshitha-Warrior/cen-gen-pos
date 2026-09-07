@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, useCallback, type FormEvent } from 'react'
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { Link, useNavigate } from 'react-router-dom'
 import {
@@ -9,6 +9,8 @@ import {
 } from 'lucide-react'
 import { isSupabaseConfigured, supabase } from '../lib/supabase'
 import { useProductStore, useVariantStore, useAdminAuthStore, type Product } from '../store/store'
+import { useNavigationStore } from '../store/navigationStore'
+import { barcodeService } from '../services/barcodeService'
 import { Invoice } from '../components/Invoice'
 import CatalogModal from '../components/CatalogModal'
 import { invoicePdfFile } from '../lib/invoicePdf'
@@ -118,6 +120,8 @@ const CAT_COLOR: Record<string, string> = {
 // ══════════════════════════════════════════════════════════════════════════
 type PosProps = {
   isEmbedded?: boolean
+  externalScannedCode?: string | null
+  onCodeProcessed?: () => void
 }
 
 export default function Pos(props: PosProps = {}) {
@@ -396,6 +400,52 @@ export default function Pos(props: PosProps = {}) {
       })
     })
   }
+
+  const externalCodeFromStore = useNavigationStore((s) => s.externalScannedCode)
+  const setExternalScannedCode = useNavigationStore((s) => s.setExternalScannedCode)
+
+  const processIncomingCode = useCallback(async (codeToProcess: string) => {
+    const clean = codeToProcess.trim()
+    if (!clean) return
+    try {
+      const record = await barcodeService.lookupBarcode(clean)
+      if (!record || !record.product) {
+        setError(`Barcode "${clean}" not recognized in catalog`)
+        return
+      }
+      const prod = record.product
+      const varnt = record.variant
+      const effectiveStock = varnt ? (Number(varnt.stock) || 0) : 999
+      const price = varnt?.price ? Number(varnt.price) : Number(prod.price)
+
+      const payload: ScannedItemPayload = {
+        product_id: record.product_id,
+        variant_id: record.variant_id || null,
+        product_name: prod.name,
+        name_ta: prod.name_ta,
+        variant_name: varnt?.variant_name,
+        price: price,
+        offer_price: prod.offer_price ? Number(prod.offer_price) : undefined,
+        stock: effectiveStock,
+        barcode: clean,
+        image_url: prod.image_url,
+        category: prod.category,
+      }
+      handleScannedItem(payload)
+    } catch (err) {
+      console.error('Failed to process incoming barcode:', err)
+      setError('Failed to scan barcode')
+    }
+  }, [])
+
+  useEffect(() => {
+    const code = props.externalScannedCode || externalCodeFromStore
+    if (code) {
+      void processIncomingCode(code)
+      setExternalScannedCode(null)
+      props.onCodeProcessed?.()
+    }
+  }, [props.externalScannedCode, externalCodeFromStore, processIncomingCode, setExternalScannedCode, props])
 
 
 

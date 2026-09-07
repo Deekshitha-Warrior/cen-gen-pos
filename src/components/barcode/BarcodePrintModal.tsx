@@ -62,19 +62,22 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
     const doc = iframe.contentWindow?.document
     if (!doc) return
 
-    // Build standalone HTML for the printed stickers
+    const fullTitle = `${productName}${variantName ? ` (${variantName})` : ''}`
+
+    // Build standalone HTML for the printed stickers with strict thermal proportions
     const stickersHtml = Array.from({ length: Math.max(1, quantity) })
       .map(
         () => `
         <div class="sticker">
-          <div class="brand">${BRAND_EN}</div>
-          <div class="prod-title">${productName}</div>
-          ${variantName ? `<div class="variant">${variantName}</div>` : ''}
+          <div class="header">
+            <div class="brand">${BRAND_EN}</div>
+            <div class="prod-title">${fullTitle}</div>
+          </div>
           <div class="barcode-box">
             <svg class="barcode-svg" jsbarcode-value="${barcodeValue}"></svg>
           </div>
           <div class="footer">
-            <span>${mrp && mrp > price ? `<span class="mrp">MRP ₹${mrp}</span>` : 'CLAD RETAIL'}</span>
+            <span>${mrp && mrp > price ? `<span class="mrp">MRP ₹${mrp}</span>` : '<span class="retail-tag">CLAD RETAIL</span>'}</span>
             <span class="price">₹${price}</span>
           </div>
         </div>
@@ -86,28 +89,36 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
       <!DOCTYPE html>
       <html>
         <head>
-          <title>Print Barcodes - ${barcodeValue}</title>
+          <title>Print Barcode - ${barcodeValue}</title>
           <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
           <style>
             @page {
               size: ${selectedPreset.widthMm}mm ${selectedPreset.heightMm}mm;
-              margin: 0 !important;
-              marks: none;
+              margin: 0mm !important;
+              marks: none !important;
+            }
+            * {
+              box-sizing: border-box;
+              margin: 0;
+              padding: 0;
             }
             html, body {
               margin: 0 !important;
               padding: 0 !important;
-              background: #fff;
-              font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+              width: ${selectedPreset.widthMm}mm !important;
+              height: ${selectedPreset.heightMm}mm !important;
+              overflow: hidden !important;
+              background: #fff !important;
+              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
               -webkit-print-color-adjust: exact;
               print-color-adjust: exact;
             }
             .sticker {
               width: ${selectedPreset.widthMm}mm;
               height: ${selectedPreset.heightMm}mm;
+              max-width: ${selectedPreset.widthMm}mm;
               max-height: ${selectedPreset.heightMm}mm;
-              padding: 1.2mm 1.5mm;
-              box-sizing: border-box;
+              padding: 0.8mm 1.5mm;
               display: flex;
               flex-direction: column;
               justify-content: space-between;
@@ -118,66 +129,79 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
               page-break-inside: avoid !important;
               break-inside: avoid !important;
               overflow: hidden;
+              box-sizing: border-box;
             }
             .sticker:last-child {
               page-break-after: auto !important;
               break-after: auto !important;
             }
+            .header {
+              width: 100%;
+              display: flex;
+              flex-direction: column;
+              align-items: center;
+              justify-content: center;
+              line-height: 1;
+              padding-bottom: 0.3mm;
+            }
             .brand {
               font-size: 7.5pt;
               font-weight: 900;
-              letter-spacing: 1px;
+              letter-spacing: 0.5px;
               text-transform: uppercase;
+              color: #000;
               line-height: 1;
             }
             .prod-title {
-              font-size: 8pt;
+              font-size: 6.5pt;
               font-weight: 700;
               white-space: nowrap;
               overflow: hidden;
               text-overflow: ellipsis;
-              max-width: 100%;
-              line-height: 1.1;
-              margin-top: 1px;
-            }
-            .variant {
-              font-size: 7pt;
-              font-weight: 800;
-              border: 0.5pt solid #000;
-              padding: 0 3px;
-              border-radius: 2px;
-              display: inline-block;
+              max-width: 96%;
+              margin-top: 0.4mm;
+              color: #111;
               line-height: 1;
-              margin-top: 0.5px;
             }
             .barcode-box {
               width: 100%;
               display: flex;
               justify-content: center;
               align-items: center;
-              margin: 0.5px 0;
+              margin: 0;
+              overflow: hidden;
             }
             .barcode-svg {
-              max-width: 100%;
+              display: block;
+              margin: 0 auto;
+              max-width: 95%;
               height: auto;
             }
             .footer {
               width: 100%;
               display: flex;
               justify-content: space-between;
-              align-items: center;
-              font-size: 7pt;
-              border-top: 0.5pt solid #ccc;
-              padding-top: 0.5px;
+              align-items: flex-end;
+              border-top: 0.5pt solid #000;
+              padding-top: 0.4mm;
               line-height: 1;
+              margin-top: 0.2mm;
+            }
+            .retail-tag {
+              font-size: 5.5pt;
+              font-weight: 800;
+              color: #444;
             }
             .mrp {
               text-decoration: line-through;
-              color: #666;
+              color: #555;
+              font-size: 6pt;
+              font-weight: 600;
             }
             .price {
-              font-size: 9pt;
+              font-size: 8.5pt;
               font-weight: 900;
+              color: #000;
             }
           </style>
         </head>
@@ -187,9 +211,10 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
             window.onload = function() {
               JsBarcode(".barcode-svg").init({
                 format: "CODE128",
-                width: 1.2,
-                height: 28,
-                fontSize: 9,
+                width: ${selectedPreset.widthMm <= 38 ? 0.85 : 0.95},
+                height: ${selectedPreset.heightMm <= 25 ? 13 : 16},
+                fontSize: 7.5,
+                font: "Arial, sans-serif",
                 margin: 0,
                 textMargin: 1,
                 displayValue: true
@@ -261,7 +286,7 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
               <button
                 type="button"
                 onClick={handleCopyBarcode}
-                className="text-gray-400 hover:text-gray-700 transition-colors p-1"
+                className="text-gray-400 hover:text-gray-700 transition-colors p-1 cursor-pointer"
                 title="Copy Barcode Value"
               >
                 {copied ? <Check size={14} className="text-green-600" /> : <Copy size={14} />}
@@ -279,7 +304,7 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
                 <button
                   type="button"
                   onClick={() => setQuantity((q) => Math.max(1, q - 1))}
-                  className="w-10 h-10 rounded-xl bg-gray-100 hover:bg-gray-200 text-black font-black text-lg flex items-center justify-center border border-gray-300"
+                  className="w-10 h-10 rounded-xl bg-gray-100 hover:bg-gray-200 text-black font-black text-lg flex items-center justify-center border border-gray-300 cursor-pointer"
                 >
                   -
                 </button>
@@ -294,7 +319,7 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
                 <button
                   type="button"
                   onClick={() => setQuantity((q) => q + 1)}
-                  className="w-10 h-10 rounded-xl bg-gray-100 hover:bg-gray-200 text-black font-black text-lg flex items-center justify-center border border-gray-300"
+                  className="w-10 h-10 rounded-xl bg-gray-100 hover:bg-gray-200 text-black font-black text-lg flex items-center justify-center border border-gray-300 cursor-pointer"
                 >
                   +
                 </button>
@@ -314,7 +339,7 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
                   const preset = LABEL_PRESETS.find((p) => p.name === e.target.value)
                   if (preset) setSelectedPreset(preset)
                 }}
-                className="w-full py-2.5 px-3 rounded-xl border-2 border-[#E8D399] bg-[#FBFAF6] font-bold text-sm text-gray-900 outline-none focus:border-[#0A0A0A] focus:bg-white"
+                className="w-full py-2.5 px-3 rounded-xl border-2 border-[#E8D399] bg-[#FBFAF6] font-bold text-sm text-gray-900 outline-none focus:border-[#0A0A0A] focus:bg-white cursor-pointer"
               >
                 {LABEL_PRESETS.map((p) => (
                   <option key={p.name} value={p.name}>
