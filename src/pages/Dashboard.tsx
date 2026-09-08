@@ -4,6 +4,7 @@ import {
   Box, AlertCircle, ArrowUp, ArrowDown, Power, Download, TrendingUp, TrendingDown,
   Package, Search, RefreshCw, ShieldCheck, ShieldOff, Trophy,
   MessageCircle, ChevronDown, Eye, FileText, Printer, MoreVertical, X, Layers, Receipt,
+  SlidersHorizontal,
 } from 'lucide-react'
 
 // Custom Malaysian Ringgit icon — replaces the generic dollar-sign icon
@@ -248,6 +249,8 @@ export default function Dashboard() {
   const [todayBillsSearch, setTodayBillsSearch] = useState('')
   const [productAnalyticsSearch, setProductAnalyticsSearch] = useState('')
   const [datePreset, setDatePreset] = useState<'today' | 'week' | 'month' | 'custom' | ''>('')
+  const [historyQuickSearch, setHistoryQuickSearch] = useState('')
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false)
   const [searchResults, setSearchResults] = useState<DashboardOrder[]>([])
   const [searchLoading, setSearchLoading] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
@@ -1116,21 +1119,59 @@ export default function Dashboard() {
     }
   }
 
+  const handleClearHistoryFilters = () => {
+    setHistoryQuickSearch('')
+    setSearch({ invoiceNo: '', phone: '', customerName: '', dateFrom: '', dateTo: '' })
+    setDatePreset('')
+    setBillTypeFilter('all')
+    setShowAdvancedFilters(false)
+    void loadData()
+  }
+
+  const activeHistoryFiltersCount = useMemo(() => {
+    let count = 0
+    if (billTypeFilter !== 'all') count++
+    if (datePreset || search.dateFrom || search.dateTo) count++
+    if (search.invoiceNo.trim()) count++
+    if (search.customerName.trim()) count++
+    if (search.phone.trim()) count++
+    return count
+  }, [billTypeFilter, datePreset, search])
+
   // Order search - POS bills only (online_request excluded)
   const runSearch = async (e?: FormEvent) => {
     e?.preventDefault()
     setSearchLoading(true)
     try {
+      const qText = historyQuickSearch.trim()
       const invInput = search.invoiceNo.trim()
       const phoneInput = search.phone.trim()
       const custInput = search.customerName.trim()
-      const hasQuery = Boolean(invInput || phoneInput || custInput)
+      const hasQuery = Boolean(qText || invInput || phoneInput || custInput)
 
       let q = supabase.from('orders')
         .select('id, invoice_no, customer_name, phone, address, created_at, total, status, order_mode, order_type, items, coupon_code, discount_amount, manual_discount_amount, delivery_charge, total_gst, gst_amount, payment_mode, payment_method, invoice_pdf_url, remarks, reference_number')
         .neq('order_type', 'online_request')
         .order('created_at', { ascending: false })
         .limit(hasQuery ? 1000 : 500)
+
+      if (qText) {
+        const digitsOnly = qText.replace(/\D/g, '')
+        const nonZeroDigits = digitsOnly.replace(/^0+/, '')
+        const conds = [
+          `invoice_no.ilike.%${qText}%`,
+          `customer_name.ilike.%${qText}%`,
+          `phone.ilike.%${qText}%`
+        ]
+        if (digitsOnly && digitsOnly !== qText) {
+          conds.push(`invoice_no.ilike.%${digitsOnly}%`)
+          if (digitsOnly.length >= 4) conds.push(`phone.ilike.%${digitsOnly}%`)
+        }
+        if (nonZeroDigits && nonZeroDigits !== digitsOnly && nonZeroDigits !== qText) {
+          conds.push(`invoice_no.ilike.%${nonZeroDigits}%`)
+        }
+        q = q.or(conds.join(','))
+      }
 
       if (invInput) {
         const digitsOnly = invInput.replace(/\D/g, '')
@@ -1171,6 +1212,18 @@ export default function Dashboard() {
 
       // Client-side match filter to handle formatted invoice numbers (e.g. INV0000013 vs PB-20260716-000013)
       const matchOrder = (o: DashboardOrder) => {
+        if (qText) {
+          const qLower = qText.toLowerCase()
+          const matchInv = o.invoice_no.toLowerCase().includes(qLower) || formatInvoiceNo(o.invoice_no).toLowerCase().includes(qLower) || o.id.toLowerCase() === qLower
+          const matchCust = o.customer_name.toLowerCase().includes(qLower)
+          const matchPhone = o.phone.toLowerCase().includes(qLower)
+          const qDigits = qText.replace(/\D/g, '')
+          const rawInvDigits = o.invoice_no.replace(/\D/g, '')
+          const rawPhoneDigits = o.phone.replace(/\D/g, '')
+          const matchInvDigits = Boolean(qDigits && (rawInvDigits.endsWith(qDigits) || rawInvDigits.includes(qDigits)))
+          const matchPhoneDigits = Boolean(qDigits && qDigits.length >= 4 && rawPhoneDigits.includes(qDigits))
+          if (!matchInv && !matchCust && !matchPhone && !matchInvDigits && !matchPhoneDigits) return false
+        }
         if (invInput) {
           const matchRaw = o.invoice_no.toLowerCase().includes(invInput.toLowerCase())
           const matchFmt = formatInvoiceNo(o.invoice_no).toLowerCase().includes(invInput.toLowerCase())
@@ -2972,67 +3025,233 @@ export default function Dashboard() {
                 </Link>
               </div>
             </div>
-            <div className="rounded-2xl border border-[#E5E7EB]/60 bg-white p-3 sm:p-6 shadow-sm">
-              {/* Bill type filter */}
-              <div className="flex flex-wrap gap-2 mb-4">
-                {([
-                  { v: 'all',     l: l('All Bills', 'அனைத்து') },
-                  { v: 'offline', l: l('Offline', 'ஆஃப்லைன்') },
-                  { v: 'online',  l: l('Online', 'ஆன்லைன்') },
-                  { v: 'manual',  l: l('Manual', 'கைமுறை') },
-                ] as const).map(({ v, l }) => (
-                  <button key={v} type="button" onClick={() => setBillTypeFilter(v)}
-                    className={`min-h-[44px] px-3 py-1.5 rounded-xl text-[12px] font-black transition-colors ${billTypeFilter === v ? 'bg-[#111111] text-white shadow-sm' : 'bg-[#F9FAFB] text-[#374151] hover:bg-[#E5E7EB]/40'}`}>
-                    {l}
-                  </button>
-                ))}
-              </div>
-              <form onSubmit={runSearch} className="space-y-3 mb-4">
-                <div className="flex flex-wrap gap-2 items-center">
-                  {(['today', 'week', 'month', 'custom'] as const).map(preset => (
-                    <button key={preset} type="button" onClick={() => applyDatePreset(preset)}
-                      className={`min-h-[44px] px-3 py-1.5 rounded-xl text-[12px] font-black transition-colors ${datePreset === preset ? 'bg-[#D4AF37] text-white shadow-sm' : 'bg-[#F9FAFB] text-[#374151] hover:bg-[#E5E7EB]/40'}`}>
-                      {preset === 'today' ? l('Today','இன்று') : preset === 'week' ? l('This Week','இந்த வாரம்') : preset === 'month' ? l('This Month','இந்த மாதம்') : l('Custom Range','தேர்வு')}
+            <div className="rounded-2xl border border-[#E5E7EB]/60 bg-white p-3 sm:p-4 shadow-sm space-y-2.5">
+              {/* Primary compact search & quick filter bar */}
+              <form onSubmit={runSearch} className="space-y-2.5">
+                <div className="flex flex-col lg:flex-row items-stretch lg:items-center gap-2">
+                  {/* Smart Quick Search + Search Button */}
+                  <div className="flex items-center gap-2 flex-1">
+                    <div className="relative flex-1 min-w-0">
+                      <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                      <input
+                        type="text"
+                        className="w-full h-11 pl-9 pr-8 rounded-xl bg-[#F9FAFB] border border-gray-200 text-xs sm:text-[13px] font-semibold text-[#111111] placeholder:text-gray-400 focus:outline-none focus:border-[#D4AF37] focus:ring-1 focus:ring-[#D4AF37] transition-all"
+                        placeholder={l('Search by Invoice, Customer, Phone...', 'பில் எண், வாடிக்கையாளர், போன் எண்...')}
+                        value={historyQuickSearch}
+                        onChange={e => setHistoryQuickSearch(e.target.value)}
+                      />
+                      {historyQuickSearch && (
+                        <button
+                          type="button"
+                          onClick={() => { setHistoryQuickSearch(''); void loadData() }}
+                          className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-200 transition-colors"
+                          title="Clear"
+                        >
+                          <X size={13} />
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Search Submit Button */}
+                    <button
+                      type="submit"
+                      disabled={searchLoading}
+                      className="h-11 px-3.5 sm:px-4 rounded-xl bg-[#D4AF37] text-white text-xs font-bold shadow-sm flex items-center justify-center gap-1.5 shrink-0 hover:bg-[#b89528] disabled:opacity-50 transition-colors cursor-pointer"
+                    >
+                      {searchLoading ? (
+                        <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        <Search size={13} />
+                      )}
+                      <span>{searchLoading ? l('Searching...', 'தேடுகிறது...') : l('Search', 'தேடு')}</span>
                     </button>
-                  ))}
-                  {(search.dateFrom || search.dateTo || datePreset) && (
-                    <button type="button" onClick={() => { setDatePreset(''); setSearch(s => ({ ...s, dateFrom: '', dateTo: '' })) }}
-                      className="min-h-[44px] px-3 py-1.5 rounded-xl text-[12px] font-black text-[#D4AF37] hover:bg-[#D4AF37]/5">{l('Clear Dates', 'தேதி அழி')}</button>
-                  )}
+                  </div>
+
+                  {/* Dropdown controls & Filters toggle in a 3-column grid on mobile with generous width */}
+                  <div className="grid grid-cols-3 gap-2 shrink-0 w-full lg:w-auto">
+                    {/* Bill Type Dropdown */}
+                    <div className="relative min-w-0">
+                      <select
+                        value={billTypeFilter}
+                        onChange={e => setBillTypeFilter(e.target.value as typeof billTypeFilter)}
+                        className="w-full lg:w-32 h-11 appearance-none pl-2.5 pr-6 rounded-xl bg-[#F9FAFB] border border-gray-200 text-xs font-bold text-gray-800 focus:outline-none focus:border-[#D4AF37] cursor-pointer hover:bg-gray-100 transition-colors truncate"
+                      >
+                        <option value="all">{l('All Bills', 'அனைத்து')}</option>
+                        <option value="offline">{l('Offline', 'ஆஃப்லைன்')}</option>
+                        <option value="online">{l('Online', 'ஆன்லைன்')}</option>
+                        <option value="manual">{l('Manual', 'கைமுறை')}</option>
+                      </select>
+                      <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
+                    </div>
+
+                    {/* Date Preset Dropdown */}
+                    <div className="relative min-w-0">
+                      <select
+                        value={datePreset}
+                        onChange={e => {
+                          const val = e.target.value as 'today' | 'week' | 'month' | 'custom' | ''
+                          if (!val) {
+                            setDatePreset('')
+                            setSearch(s => ({ ...s, dateFrom: '', dateTo: '' }))
+                          } else {
+                            applyDatePreset(val)
+                            if (val === 'custom') {
+                              setShowAdvancedFilters(true)
+                            }
+                          }
+                        }}
+                        className="w-full lg:w-32 h-11 appearance-none pl-2.5 pr-6 rounded-xl bg-[#F9FAFB] border border-gray-200 text-xs font-bold text-gray-800 focus:outline-none focus:border-[#D4AF37] cursor-pointer hover:bg-gray-100 transition-colors truncate"
+                      >
+                        <option value="">{l('All Dates', 'தேதி: அனைத்து')}</option>
+                        <option value="today">{l('Today', 'இன்று')}</option>
+                        <option value="week">{l('This Week', 'இந்த வாரம்')}</option>
+                        <option value="month">{l('This Month', 'இந்த மாதம்')}</option>
+                        <option value="custom">{l('Custom...', 'தேர்வு...')}</option>
+                      </select>
+                      <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
+                    </div>
+
+                    {/* Advanced Filters Toggle Button */}
+                    <button
+                      type="button"
+                      onClick={() => setShowAdvancedFilters(v => !v)}
+                      className={`w-full lg:w-auto h-11 px-2.5 sm:px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-1 sm:gap-1.5 transition-colors cursor-pointer min-w-0 ${
+                        showAdvancedFilters || activeHistoryFiltersCount > 0
+                          ? 'bg-[#111111] text-white border-[#111111]'
+                          : 'bg-[#F9FAFB] text-gray-700 border-gray-200 hover:bg-gray-100'
+                      }`}
+                      title="Toggle detailed filters"
+                    >
+                      <SlidersHorizontal size={12} className="shrink-0" />
+                      <span className="truncate">{l('Filters', 'வடிகட்டி')}</span>
+                      {activeHistoryFiltersCount > 0 && (
+                        <span className="w-4 h-4 rounded-full bg-[#D4AF37] text-black text-[9px] font-black flex items-center justify-center shrink-0">
+                          {activeHistoryFiltersCount}
+                        </span>
+                      )}
+                      <ChevronDown size={11} className={`transition-transform duration-200 shrink-0 ${showAdvancedFilters ? 'rotate-180' : ''}`} />
+                    </button>
+                  </div>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                  <input className="min-h-[48px] rounded-xl bg-[#F9FAFB] px-3 py-2.5 text-[16px] md:text-[13px] font-semibold text-[#111111] placeholder:text-[#8A9384] focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/15" placeholder={l('Invoice / Bill No', 'பில் எண்')}
-                    value={search.invoiceNo} onChange={e => setSearch(s => ({ ...s, invoiceNo: e.target.value }))} />
-                  <input className="min-h-[48px] rounded-xl bg-[#F9FAFB] px-3 py-2.5 text-[16px] md:text-[13px] font-semibold text-[#111111] placeholder:text-[#8A9384] focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/15" placeholder={l('Customer Name', 'வாடிக்கையாளர் பெயர்')}
-                    value={search.customerName} onChange={e => setSearch(s => ({ ...s, customerName: e.target.value }))} />
-                  <input className="min-h-[48px] rounded-xl bg-[#F9FAFB] px-3 py-2.5 text-[16px] md:text-[13px] font-semibold text-[#111111] placeholder:text-[#8A9384] focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/15" placeholder={l('Mobile Number', 'மொபைல் எண்')}
-                    value={search.phone} onChange={e => setSearch(s => ({ ...s, phone: e.target.value }))} />
-                  {datePreset === 'custom' ? (
-                    <>
-                      <input type="date" className="min-h-[48px] rounded-xl bg-[#F9FAFB] px-3 py-2.5 text-[16px] md:text-[13px] font-semibold text-[#111111] focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/15"
-                        value={search.dateFrom} onChange={e => setSearch(s => ({ ...s, dateFrom: e.target.value }))} />
-                      <input type="date" className="min-h-[48px] rounded-xl bg-[#F9FAFB] px-3 py-2.5 text-[16px] md:text-[13px] font-semibold text-[#111111] focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/15"
-                        value={search.dateTo} onChange={e => setSearch(s => ({ ...s, dateTo: e.target.value }))} />
-                    </>
-                  ) : (
-                    <button type="submit" disabled={searchLoading}
-                      className="sm:col-span-2 min-h-[48px] flex items-center justify-center gap-2 rounded-xl bg-[#D4AF37] py-2.5 text-[13px] font-bold text-white shadow-sm transition-colors hover:bg-[#065F46] disabled:opacity-60">
-                      <Search size={14} /> {searchLoading ? l('Searching...','தேடுகிறது...') : l('Search Bills','தேடு')}
-                    </button>
-                  )}
-                  {datePreset === 'custom' && (
-                    <button type="submit" disabled={searchLoading}
-                      className="sm:col-span-2 lg:col-span-4 min-h-[48px] flex items-center justify-center gap-2 rounded-xl bg-[#D4AF37] py-2.5 text-[13px] font-bold text-white shadow-sm transition-colors hover:bg-[#065F46] disabled:opacity-60">
-                      <Search size={14} /> {searchLoading ? l('Searching...','தேடுகிறது...') : l('Search Bills','தேடு')}
-                    </button>
-                  )}
-                </div>
+
+                {/* Collapsible Advanced Filter Panel */}
+                {showAdvancedFilters && (
+                  <div className="pt-3 pb-1 border-t border-gray-100 space-y-3 animate-in fade-in slide-in-from-top-2 duration-200">
+                    <div className="flex items-center justify-between text-xs font-bold text-gray-500">
+                      <span className="uppercase text-[10px] tracking-wider text-gray-600 flex items-center gap-1">
+                        <SlidersHorizontal size={11} /> {l('Detailed Filters', 'கூடுதல் வடிகட்டிகள்')}
+                      </span>
+                      {(activeHistoryFiltersCount > 0 || historyQuickSearch) && (
+                        <button
+                          type="button"
+                          onClick={handleClearHistoryFilters}
+                          className="text-[11px] font-bold text-red-600 hover:underline cursor-pointer"
+                        >
+                          {l('Reset All Filters', 'அனைத்தையும் மீட்டமை')}
+                        </button>
+                      )}
+                    </div>
+
+                    {/* If Custom Date selected: From and To Date Inputs */}
+                    {datePreset === 'custom' && (
+                      <div className="p-2.5 sm:p-3 bg-amber-50/60 border border-amber-200 rounded-xl space-y-1.5">
+                        <span className="text-[11px] font-bold text-amber-900 block">
+                          {l('Select Custom Date Range', 'தேதி வரம்பை தேர்வு செய்யவும்')}:
+                        </span>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          <div>
+                            <label className="text-[10px] font-bold text-gray-500 uppercase block mb-0.5">From Date</label>
+                            <input
+                              type="date"
+                              className="w-full h-10 px-3 rounded-lg bg-white border border-gray-300 text-xs font-semibold text-gray-800 focus:outline-none focus:border-[#D4AF37]"
+                              value={search.dateFrom}
+                              onChange={e => setSearch(s => ({ ...s, dateFrom: e.target.value }))}
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[10px] font-bold text-gray-500 uppercase block mb-0.5">To Date</label>
+                            <input
+                              type="date"
+                              className="w-full h-10 px-3 rounded-lg bg-white border border-gray-300 text-xs font-semibold text-gray-800 focus:outline-none focus:border-[#D4AF37]"
+                              value={search.dateTo}
+                              onChange={e => setSearch(s => ({ ...s, dateTo: e.target.value }))}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Specific Text Field Inputs */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      <div>
+                        <label className="text-[10px] font-bold text-gray-500 uppercase block mb-0.5">{l('Invoice / Bill No', 'பில் எண்')}</label>
+                        <input
+                          type="text"
+                          className="w-full h-10 px-3 rounded-lg bg-[#F9FAFB] border border-gray-200 text-xs font-semibold text-gray-900 focus:outline-none focus:border-[#D4AF37]"
+                          placeholder="e.g. INV000001"
+                          value={search.invoiceNo}
+                          onChange={e => setSearch(s => ({ ...s, invoiceNo: e.target.value }))}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-bold text-gray-500 uppercase block mb-0.5">{l('Customer Name', 'வாடிக்கையாளர் பெயர்')}</label>
+                        <input
+                          type="text"
+                          className="w-full h-10 px-3 rounded-lg bg-[#F9FAFB] border border-gray-200 text-xs font-semibold text-gray-900 focus:outline-none focus:border-[#D4AF37]"
+                          placeholder="e.g. Priya"
+                          value={search.customerName}
+                          onChange={e => setSearch(s => ({ ...s, customerName: e.target.value }))}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-bold text-gray-500 uppercase block mb-0.5">{l('Mobile Number', 'மொபைல் எண்')}</label>
+                        <input
+                          type="text"
+                          className="w-full h-10 px-3 rounded-lg bg-[#F9FAFB] border border-gray-200 text-xs font-semibold text-gray-900 focus:outline-none focus:border-[#D4AF37]"
+                          placeholder="e.g. 9876543210"
+                          value={search.phone}
+                          onChange={e => setSearch(s => ({ ...s, phone: e.target.value }))}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
               </form>
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-[11px] font-semibold text-[#374151]">{filteredSearchResults.length} {l('result(s)', 'முடிவுகள்')}</p>
+
+              {/* Active Filter Chips / Status bar */}
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-1.5 border-t border-gray-100 text-xs">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="font-bold text-gray-600">
+                    {filteredSearchResults.length} {l('result(s)', 'முடிவுகள்')}
+                  </span>
+
+                  {/* Active filter badges that can be clicked to dismiss */}
+                  {billTypeFilter !== 'all' && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-gray-100 text-gray-800 text-[11px] font-semibold">
+                      Type: {billTypeFilter}
+                      <button type="button" onClick={() => setBillTypeFilter('all')} className="hover:text-red-600 cursor-pointer"><X size={11} /></button>
+                    </span>
+                  )}
+                  {datePreset && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 text-amber-900 border border-amber-200 text-[11px] font-semibold">
+                      Date: {datePreset === 'today' ? 'Today' : datePreset === 'week' ? 'This Week' : datePreset === 'month' ? 'This Month' : 'Custom'}
+                      <button type="button" onClick={() => { setDatePreset(''); setSearch(s => ({ ...s, dateFrom: '', dateTo: '' })) }} className="hover:text-red-600 cursor-pointer"><X size={11} /></button>
+                    </span>
+                  )}
+                  {historyQuickSearch && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-50 text-blue-900 border border-blue-200 text-[11px] font-semibold">
+                      "{historyQuickSearch}"
+                      <button type="button" onClick={() => { setHistoryQuickSearch(''); void loadData() }} className="hover:text-red-600 cursor-pointer"><X size={11} /></button>
+                    </span>
+                  )}
+                </div>
+
                 {filteredSearchResults.length > 0 && (
-                  <button onClick={() => exportCSV(filteredSearchResults)}
-                    className="flex items-center gap-1 text-[11px] font-bold text-[#D4AF37] hover:underline">
+                  <button
+                    type="button"
+                    onClick={() => exportCSV(filteredSearchResults)}
+                    className="inline-flex items-center gap-1 text-[11px] font-bold text-[#D4AF37] hover:text-[#b89528] transition-colors cursor-pointer"
+                  >
                     <Download size={11} /> Export CSV
                   </button>
                 )}
