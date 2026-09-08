@@ -30,10 +30,10 @@ export const AdjustStockModal: React.FC<AdjustStockModalProps> = ({
   onSuccess,
 }) => {
   const [mode, setMode] = useState<AdjustMode>('RESTOCK')
-  const [addQuantity, setAddQuantity] = useState<number>(1)
-  const [removeQuantity, setRemoveQuantity] = useState<number>(1)
+  const [addQuantity, setAddQuantity] = useState<number | ''>(0)
+  const [removeQuantity, setRemoveQuantity] = useState<number | ''>(0)
   const [removeReason, setRemoveReason] = useState<RemoveReason>('DAMAGE')
-  const [correctedQuantity, setCorrectedQuantity] = useState<number>(0)
+  const [correctedQuantity, setCorrectedQuantity] = useState<number | ''>(0)
   const [note, setNote] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
@@ -41,8 +41,8 @@ export const AdjustStockModal: React.FC<AdjustStockModalProps> = ({
   useEffect(() => {
     if (item && isOpen) {
       setMode('RESTOCK')
-      setAddQuantity(1)
-      setRemoveQuantity(Math.min(1, Math.max(1, item.stock)))
+      setAddQuantity(0)
+      setRemoveQuantity(0)
       setRemoveReason('DAMAGE')
       setCorrectedQuantity(item.stock)
       setNote('')
@@ -53,6 +53,9 @@ export const AdjustStockModal: React.FC<AdjustStockModalProps> = ({
   if (!isOpen || !item) return null
 
   const currentStock = item.stock
+  const numAdd = typeof addQuantity === 'number' ? addQuantity : 0
+  const numRemove = typeof removeQuantity === 'number' ? removeQuantity : 0
+  const numCorrected = typeof correctedQuantity === 'number' ? correctedQuantity : 0
 
   // Calculate effective new total stock and delta based on active mode
   let effectiveNewStock = currentStock
@@ -60,15 +63,15 @@ export const AdjustStockModal: React.FC<AdjustStockModalProps> = ({
   let effectiveReason: 'RESTOCK' | 'DAMAGE' | 'CORRECTION' | 'RETURN' = 'RESTOCK'
 
   if (mode === 'RESTOCK') {
-    effectiveNewStock = currentStock + Math.max(0, addQuantity)
-    delta = addQuantity
+    effectiveNewStock = currentStock + Math.max(0, numAdd)
+    delta = numAdd
     effectiveReason = 'RESTOCK'
   } else if (mode === 'REMOVE') {
-    effectiveNewStock = Math.max(0, currentStock - Math.max(0, removeQuantity))
-    delta = -Math.min(currentStock, Math.max(0, removeQuantity))
+    effectiveNewStock = Math.max(0, currentStock - Math.max(0, numRemove))
+    delta = -Math.min(currentStock, Math.max(0, numRemove))
     effectiveReason = removeReason
   } else {
-    effectiveNewStock = Math.max(0, correctedQuantity)
+    effectiveNewStock = Math.max(0, numCorrected)
     delta = effectiveNewStock - currentStock
     effectiveReason = 'CORRECTION'
   }
@@ -77,13 +80,13 @@ export const AdjustStockModal: React.FC<AdjustStockModalProps> = ({
     e.preventDefault()
     setError('')
 
-    if (mode === 'RESTOCK' && addQuantity <= 0) {
+    if (mode === 'RESTOCK' && numAdd <= 0) {
       setError('Please enter a valid quantity to add (minimum 1 unit)')
       return
     }
 
     if (mode === 'REMOVE') {
-      if (removeQuantity <= 0) {
+      if (numRemove <= 0) {
         setError('Please enter a valid quantity to remove (minimum 1 unit)')
         return
       }
@@ -91,13 +94,13 @@ export const AdjustStockModal: React.FC<AdjustStockModalProps> = ({
         setError('Current stock is 0. Cannot remove units from an empty stock.')
         return
       }
-      if (removeQuantity > currentStock) {
-        setError(`Cannot remove ${removeQuantity} units. Maximum available stock to remove is ${currentStock}.`)
+      if (numRemove > currentStock) {
+        setError(`Cannot remove ${numRemove} units. Maximum available stock to remove is ${currentStock}.`)
         return
       }
     }
 
-    if (mode === 'CORRECTION' && correctedQuantity < 0) {
+    if (mode === 'CORRECTION' && numCorrected < 0) {
       setError('Reconciled stock quantity cannot be negative.')
       return
     }
@@ -263,22 +266,32 @@ export const AdjustStockModal: React.FC<AdjustStockModalProps> = ({
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
-                      onClick={() => setAddQuantity((q) => Math.max(1, q - 1))}
+                      onClick={() => setAddQuantity((q) => (typeof q === 'number' ? Math.max(0, q - 1) : 0))}
                       className="w-10 h-10 rounded-lg bg-white hover:bg-emerald-100 text-emerald-900 font-black text-lg flex items-center justify-center border border-emerald-300 transition-colors"
                     >
                       -
                     </button>
                     <input
                       type="number"
-                      min="1"
+                      min="0"
                       value={addQuantity}
-                      onChange={(e) => setAddQuantity(Math.max(1, parseInt(e.target.value) || 0))}
-                      required
+                      onChange={(e) => {
+                        const val = e.target.value
+                        if (val === '') {
+                          setAddQuantity('')
+                        } else {
+                          const parsed = parseInt(val, 10)
+                          setAddQuantity(isNaN(parsed) ? '' : Math.max(0, parsed))
+                        }
+                      }}
+                      onBlur={() => {
+                        if (addQuantity === '') setAddQuantity(0)
+                      }}
                       className="flex-1 text-center font-black text-xl py-1.5 rounded-lg border-2 border-emerald-400 bg-white text-emerald-950 focus:border-emerald-600 outline-none shadow-sm"
                     />
                     <button
                       type="button"
-                      onClick={() => setAddQuantity((q) => q + 1)}
+                      onClick={() => setAddQuantity((q) => (typeof q === 'number' ? q + 1 : 1))}
                       className="w-10 h-10 rounded-lg bg-white hover:bg-emerald-100 text-emerald-900 font-black text-lg flex items-center justify-center border border-emerald-300 transition-colors"
                     >
                       +
@@ -364,23 +377,33 @@ export const AdjustStockModal: React.FC<AdjustStockModalProps> = ({
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
-                      onClick={() => setRemoveQuantity((q) => Math.max(1, q - 1))}
+                      onClick={() => setRemoveQuantity((q) => (typeof q === 'number' ? Math.max(0, q - 1) : 0))}
                       className="w-10 h-10 rounded-lg bg-white hover:bg-rose-100 text-rose-900 font-black text-lg flex items-center justify-center border border-rose-300 transition-colors"
                     >
                       -
                     </button>
                     <input
                       type="number"
-                      min="1"
+                      min="0"
                       max={currentStock}
                       value={removeQuantity}
-                      onChange={(e) => setRemoveQuantity(Math.max(1, parseInt(e.target.value) || 0))}
-                      required
+                      onChange={(e) => {
+                        const val = e.target.value
+                        if (val === '') {
+                          setRemoveQuantity('')
+                        } else {
+                          const parsed = parseInt(val, 10)
+                          setRemoveQuantity(isNaN(parsed) ? '' : Math.min(currentStock, Math.max(0, parsed)))
+                        }
+                      }}
+                      onBlur={() => {
+                        if (removeQuantity === '') setRemoveQuantity(0)
+                      }}
                       className="flex-1 text-center font-black text-xl py-1.5 rounded-lg border-2 border-rose-400 bg-white text-rose-950 focus:border-rose-600 outline-none shadow-sm"
                     />
                     <button
                       type="button"
-                      onClick={() => setRemoveQuantity((q) => Math.min(currentStock, q + 1))}
+                      onClick={() => setRemoveQuantity((q) => (typeof q === 'number' ? Math.min(currentStock, q + 1) : 1))}
                       className="w-10 h-10 rounded-lg bg-white hover:bg-rose-100 text-rose-900 font-black text-lg flex items-center justify-center border border-rose-300 transition-colors"
                     >
                       +
@@ -428,7 +451,7 @@ export const AdjustStockModal: React.FC<AdjustStockModalProps> = ({
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
-                      onClick={() => setCorrectedQuantity((q) => Math.max(0, q - 1))}
+                      onClick={() => setCorrectedQuantity((q) => (typeof q === 'number' ? Math.max(0, q - 1) : 0))}
                       className="w-10 h-10 rounded-lg bg-white hover:bg-amber-100 text-amber-950 font-black text-lg flex items-center justify-center border border-amber-300 transition-colors"
                     >
                       -
@@ -437,13 +460,23 @@ export const AdjustStockModal: React.FC<AdjustStockModalProps> = ({
                       type="number"
                       min="0"
                       value={correctedQuantity}
-                      onChange={(e) => setCorrectedQuantity(Math.max(0, parseInt(e.target.value) || 0))}
-                      required
+                      onChange={(e) => {
+                        const val = e.target.value
+                        if (val === '') {
+                          setCorrectedQuantity('')
+                        } else {
+                          const parsed = parseInt(val, 10)
+                          setCorrectedQuantity(isNaN(parsed) ? '' : Math.max(0, parsed))
+                        }
+                      }}
+                      onBlur={() => {
+                        if (correctedQuantity === '') setCorrectedQuantity(0)
+                      }}
                       className="flex-1 text-center font-black text-xl py-1.5 rounded-lg border-2 border-[#D4AF37] bg-white text-black focus:border-black outline-none shadow-sm"
                     />
                     <button
                       type="button"
-                      onClick={() => setCorrectedQuantity((q) => q + 1)}
+                      onClick={() => setCorrectedQuantity((q) => (typeof q === 'number' ? q + 1 : 1))}
                       className="w-10 h-10 rounded-lg bg-white hover:bg-amber-100 text-amber-950 font-black text-lg flex items-center justify-center border border-amber-300 transition-colors"
                     >
                       +
@@ -535,9 +568,9 @@ export const AdjustStockModal: React.FC<AdjustStockModalProps> = ({
                 <>
                   <CheckCircle2 size={15} />
                   {mode === 'RESTOCK'
-                    ? `Confirm Restock (+${addQuantity} Units)`
+                    ? `Confirm Restock (+${numAdd} Units)`
                     : mode === 'REMOVE'
-                    ? `Confirm Removal (-${removeQuantity} Units)`
+                    ? `Confirm Removal (-${numRemove} Units)`
                     : `Confirm Reconciliation (${effectiveNewStock} Units)`}
                 </>
               )}
