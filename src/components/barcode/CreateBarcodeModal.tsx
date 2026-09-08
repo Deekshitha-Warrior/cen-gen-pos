@@ -81,9 +81,17 @@ export const CreateBarcodeModal: React.FC<CreateBarcodeModalProps> = ({
   const [generating, setGenerating] = useState(false)
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
-  // Preview SVG Ref
+  // Preview SVG Refs
   const previewSvgRef = useRef<SVGSVGElement>(null)
+  const previewSvgRef2 = useRef<SVGSVGElement>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
+
+  const allSizes = getAllLabelSizes()
+  const currentSizeConfig: LabelSizeConfig =
+    allSizes.find((s) => s.id === settings.selectedSizeId) || allSizes[0]
+
+  const isSmall = currentSizeConfig.heightMm <= 25
+  const isLarge = currentSizeConfig.heightMm >= 40
 
   const selectProductItem = useCallback(async (prod: ProductOption, targetVariantId?: string | null) => {
     setSelectedProduct(prod)
@@ -144,22 +152,44 @@ export const CreateBarcodeModal: React.FC<CreateBarcodeModalProps> = ({
 
   // Update live preview SVG
   useEffect(() => {
-    if (previewSvgRef.current && itemCode) {
+    if (!itemCode) return
+
+    const previewBarcodeWidth =
+      currentSizeConfig.widthMm <= 38 ? 0.95 : currentSizeConfig.widthMm >= 80 ? 1.5 : 1.25
+    const previewBarcodeHeight = isSmall ? 22 : isLarge ? 48 : 32
+
+    if (previewSvgRef.current) {
       renderBarcodeSvg(previewSvgRef.current, itemCode, {
-        width: 1.4,
-        height: 32,
-        fontSize: 10,
+        width: previewBarcodeWidth,
+        height: previewBarcodeHeight,
+        fontSize: 9,
         displayValue: false,
-        margin: 2,
+        margin: 1,
       })
     }
-  }, [itemCode, header, line1, line2, line3, line4])
-
-  if (!isOpen) return null
-
-  const allSizes = getAllLabelSizes()
-  const currentSizeConfig: LabelSizeConfig =
-    allSizes.find((s) => s.id === settings.selectedSizeId) || allSizes[0]
+    if (previewSvgRef2.current && currentSizeConfig.labelsPerRow > 1) {
+      renderBarcodeSvg(previewSvgRef2.current, itemCode, {
+        width: previewBarcodeWidth,
+        height: previewBarcodeHeight,
+        fontSize: 9,
+        displayValue: false,
+        margin: 1,
+      })
+    }
+  }, [
+    itemCode,
+    header,
+    line1,
+    line2,
+    line3,
+    line4,
+    currentSizeConfig.id,
+    currentSizeConfig.widthMm,
+    currentSizeConfig.heightMm,
+    currentSizeConfig.labelsPerRow,
+    isSmall,
+    isLarge,
+  ])
 
   // Determine if currently selected item / variant already has a barcode assigned
   const assignedBarcode = selectedVariant
@@ -330,26 +360,82 @@ export const CreateBarcodeModal: React.FC<CreateBarcodeModalProps> = ({
     const doc = iframe.contentWindow?.document
     if (!doc) return
 
-    const labelsHtml: string[] = []
+    const isThermal = settings.printerType === 'label'
+    const labelsPerRow = isThermal ? (currentSizeConfig.labelsPerRow || 1) : 1
+    const totalWidthMm = isThermal
+      ? currentSizeConfig.widthMm * labelsPerRow + (labelsPerRow > 1 ? currentSizeConfig.horizontalGapMm : 0)
+      : currentSizeConfig.widthMm
+
+    // Size metrics for typography & barcode
+    const isSmallLabel = currentSizeConfig.heightMm <= 25
+    const isLargeLabel = currentSizeConfig.heightMm >= 40
+
+    const barcodeHeightNum = isSmallLabel
+      ? Math.min(13, Math.round(currentSizeConfig.heightMm * 0.44))
+      : isLargeLabel
+      ? Math.min(26, Math.round(currentSizeConfig.heightMm * 0.48))
+      : Math.min(16, Math.round(currentSizeConfig.heightMm * 0.46))
+
+    const barcodeBarWidth = currentSizeConfig.widthMm <= 38
+      ? 0.82
+      : currentSizeConfig.widthMm >= 80
+      ? 1.45
+      : 0.95
+
+    const barcodeFontSize = isSmallLabel ? 7.5 : isLargeLabel ? 10 : 8
+    const headerFontSize = isSmallLabel ? '7pt' : isLargeLabel ? '11pt' : '8pt'
+    const titleFontSize = isSmallLabel ? '6pt' : isLargeLabel ? '9.5pt' : '7pt'
+    const tagFontSize = isSmallLabel ? '5.5pt' : isLargeLabel ? '8pt' : '6.5pt'
+    const priceFontSize = isSmallLabel ? '8pt' : isLargeLabel ? '13pt' : '9.5pt'
+    const stickerPadding = isSmallLabel ? '0.6mm 1.2mm' : isLargeLabel ? '1.8mm 2.5mm' : '1mm 1.6mm'
+
+    // Generate individual sticker cards HTML
+    const allStickers: string[] = []
     selectedItems.forEach((item) => {
       const count = Math.max(1, item.noOfLabels)
       const fullTitle = `${item.productName}${item.variantName ? ` (${item.variantName})` : ''}`
       for (let i = 0; i < count; i++) {
-        labelsHtml.push(`
+        allStickers.push(`
           <div class="label-sticker">
-            <div class="header">${item.header || BRAND_EN}</div>
-            <div class="prod-title">${fullTitle}</div>
+            ${settings.showCompanyName ? `<div class="header">${item.header || BRAND_EN}</div>` : ''}
+            ${settings.showItemName ? `<div class="prod-title">${fullTitle}</div>` : ''}
             <div class="barcode-box">
               <svg class="barcode-svg" data-code="${item.barcodeValue}"></svg>
             </div>
             <div class="footer">
               <span>${item.line2 ? `<span class="tag">${item.line2}</span>` : '<span class="tag">CLAD RETAIL</span>'}</span>
-              <span class="price">₹${item.price}</span>
+              ${settings.showSalePrice ? `<span class="price">₹${item.price}</span>` : ''}
             </div>
           </div>
         `)
       }
     })
+
+    let bodyContent = ''
+    if (isThermal) {
+      // Group stickers into rows of labelsPerRow
+      const rows: string[] = []
+      for (let i = 0; i < allStickers.length; i += labelsPerRow) {
+        const rowStickers = allStickers.slice(i, i + labelsPerRow)
+        // Pad incomplete rows with invisible placeholders to preserve alignment
+        while (rowStickers.length < labelsPerRow) {
+          rowStickers.push(`<div style="width: ${currentSizeConfig.widthMm}mm; height: ${currentSizeConfig.heightMm}mm; visibility: hidden;"></div>`)
+        }
+        rows.push(`
+          <div class="label-row">
+            ${rowStickers.join('')}
+          </div>
+        `)
+      }
+      bodyContent = rows.join('')
+    } else {
+      // Regular A4 printer
+      bodyContent = `
+        <div class="a4-container">
+          ${allStickers.join('')}
+        </div>
+      `
+    }
 
     doc.open()
     doc.write(`
@@ -360,44 +446,68 @@ export const CreateBarcodeModal: React.FC<CreateBarcodeModalProps> = ({
           <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
           <style>
             @page {
-              size: ${currentSizeConfig.widthMm * currentSizeConfig.labelsPerRow + currentSizeConfig.horizontalGapMm}mm ${currentSizeConfig.heightMm}mm;
-              margin: 0 !important;
+              ${
+                isThermal
+                  ? `size: ${totalWidthMm}mm ${currentSizeConfig.heightMm}mm; margin: 0mm !important;`
+                  : `size: A4 portrait; margin: 10mm !important;`
+              }
             }
             * {
               box-sizing: border-box;
               margin: 0;
               padding: 0;
             }
-            body {
+            html, body {
               margin: 0 !important;
               padding: 0 !important;
-              font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+              ${isThermal ? `width: ${totalWidthMm}mm !important;` : ''}
               background: #fff;
+              font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
               -webkit-print-color-adjust: exact;
               print-color-adjust: exact;
             }
-            .grid-container {
-              display: grid;
-              grid-template-columns: repeat(${currentSizeConfig.labelsPerRow}, ${currentSizeConfig.widthMm}mm);
-              column-gap: ${currentSizeConfig.horizontalGapMm}mm;
-              row-gap: 2mm;
-              padding: 0.5mm;
+            .label-row {
+              width: ${totalWidthMm}mm;
+              height: ${currentSizeConfig.heightMm}mm;
+              max-width: ${totalWidthMm}mm;
+              max-height: ${currentSizeConfig.heightMm}mm;
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              page-break-after: always !important;
+              break-after: page !important;
+              page-break-inside: avoid !important;
+              break-inside: avoid !important;
+              overflow: hidden;
+              box-sizing: border-box;
+            }
+            .label-row:last-child {
+              page-break-after: auto !important;
+              break-after: auto !important;
+            }
+            .a4-container {
+              display: flex;
+              flex-wrap: wrap;
+              align-content: flex-start;
+              gap: 2mm 3mm;
             }
             .label-sticker {
               width: ${currentSizeConfig.widthMm}mm;
               height: ${currentSizeConfig.heightMm}mm;
+              max-width: ${currentSizeConfig.widthMm}mm;
+              max-height: ${currentSizeConfig.heightMm}mm;
               box-sizing: border-box;
-              padding: 0.8mm 1.5mm;
+              padding: ${stickerPadding};
               display: flex;
               flex-direction: column;
               justify-content: space-between;
               align-items: center;
               text-align: center;
               overflow: hidden;
-              page-break-inside: avoid;
+              ${!isThermal ? 'page-break-inside: avoid; break-inside: avoid; border: 0.15mm dashed #ccc;' : ''}
             }
             .header {
-              font-size: 7.5pt;
+              font-size: ${headerFontSize};
               font-weight: 900;
               letter-spacing: 0.5px;
               text-transform: uppercase;
@@ -405,13 +515,13 @@ export const CreateBarcodeModal: React.FC<CreateBarcodeModalProps> = ({
               color: #000;
             }
             .prod-title {
-              font-size: 6.5pt;
+              font-size: ${titleFontSize};
               font-weight: 700;
               white-space: nowrap;
               overflow: hidden;
               text-overflow: ellipsis;
               max-width: 96%;
-              margin-top: 0.3mm;
+              margin-top: 0.2mm;
               color: #111;
               line-height: 1;
             }
@@ -421,7 +531,7 @@ export const CreateBarcodeModal: React.FC<CreateBarcodeModalProps> = ({
               justify-content: center;
               align-items: center;
               overflow: hidden;
-              margin: 0.2mm 0;
+              margin: 0.1mm 0;
             }
             .barcode-svg {
               display: block;
@@ -435,26 +545,24 @@ export const CreateBarcodeModal: React.FC<CreateBarcodeModalProps> = ({
               justify-content: space-between;
               align-items: flex-end;
               border-top: 0.5pt solid #000;
-              padding-top: 0.4mm;
+              padding-top: 0.3mm;
               line-height: 1;
-              margin-top: 0.2mm;
+              margin-top: 0.1mm;
             }
             .tag {
-              font-size: 5.5pt;
+              font-size: ${tagFontSize};
               font-weight: 700;
               color: #444;
             }
             .price {
-              font-size: 8.5pt;
+              font-size: ${priceFontSize};
               font-weight: 900;
               color: #000;
             }
           </style>
         </head>
         <body>
-          <div class="grid-container">
-            ${labelsHtml.join('')}
-          </div>
+          ${bodyContent}
           <script>
             window.onload = function() {
               var svgs = document.querySelectorAll('.barcode-svg');
@@ -463,9 +571,9 @@ export const CreateBarcodeModal: React.FC<CreateBarcodeModalProps> = ({
                 if (code && window.JsBarcode) {
                   window.JsBarcode(svg, code, {
                     format: 'CODE128',
-                    width: ${currentSizeConfig.widthMm <= 38 ? 0.85 : 0.95},
-                    height: ${currentSizeConfig.heightMm <= 25 ? 13 : 16},
-                    fontSize: 7.5,
+                    width: ${barcodeBarWidth},
+                    height: ${barcodeHeightNum},
+                    fontSize: ${barcodeFontSize},
                     font: 'Arial, sans-serif',
                     margin: 0,
                     textMargin: 1,
@@ -487,6 +595,8 @@ export const CreateBarcodeModal: React.FC<CreateBarcodeModalProps> = ({
     `)
     doc.close()
   }
+
+  if (!isOpen) return null
 
   return (
     <>
@@ -853,45 +963,188 @@ export const CreateBarcodeModal: React.FC<CreateBarcodeModalProps> = ({
                   </div>
                 </div>
 
-                {/* RIGHT SECTION: Live Sticker Preview matching Screenshot 195106 */}
+                {/* RIGHT SECTION: Live Sticker Preview dynamically adapting to selected size */}
                 <div className="flex flex-col items-center">
-                  <div className="w-full flex items-center justify-between mb-1">
-                    <span className="text-[11px] font-black uppercase tracking-wider text-gray-600">
-                      Preview (i)
+                  <div className="w-full flex items-center justify-between mb-1.5">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[11px] font-black uppercase tracking-wider text-gray-700">
+                        Live Preview
+                      </span>
+                      <span className="px-2 py-0.5 rounded-full text-[9px] font-black bg-[#0A0A0A] text-[#D4AF37]">
+                        {currentSizeConfig.name}
+                      </span>
+                    </div>
+                    <span className="text-[10px] font-bold text-gray-500">
+                      {currentSizeConfig.widthMm} × {currentSizeConfig.heightMm} mm
                     </span>
                   </div>
 
-                  <div className="w-full rounded-2xl bg-white border border-gray-300 p-4 shadow-md flex flex-col items-center justify-center text-center relative min-h-[190px]">
-                    {/* Header */}
-                    <span className="text-[11px] font-black uppercase tracking-wider text-gray-900 mb-1">
-                      {header || BRAND_EN}
-                    </span>
+                  {/* Canvas backing representing paper roll / sheet */}
+                  <div className="w-full rounded-2xl bg-[#F4F5F7] border border-gray-300 p-3 shadow-inner flex flex-col items-center justify-center relative min-h-[220px] overflow-hidden">
+                    <div
+                      className="flex items-center justify-center gap-2 max-w-full"
+                      style={{
+                        padding: '4px',
+                      }}
+                    >
+                      {/* Sticker 1 */}
+                      <div
+                        className="bg-white border border-gray-300 rounded-lg p-2 shadow-sm flex flex-col justify-between items-center text-center relative transition-all"
+                        style={{
+                          width: currentSizeConfig.labelsPerRow === 2 ? '138px' : currentSizeConfig.widthMm >= 80 ? '240px' : '185px',
+                          aspectRatio: `${currentSizeConfig.widthMm} / ${currentSizeConfig.heightMm}`,
+                          minHeight: isSmall ? '82px' : isLarge ? '145px' : '105px',
+                          maxHeight: '210px',
+                          boxSizing: 'border-box',
+                        }}
+                      >
+                        {/* Company / Brand */}
+                        {settings.showCompanyName && (
+                          <span
+                            className="font-black uppercase tracking-wider text-gray-900 leading-none truncate max-w-full"
+                            style={{ fontSize: isSmall ? '7.5px' : isLarge ? '11px' : '9px' }}
+                          >
+                            {header || BRAND_EN}
+                          </span>
+                        )}
 
-                    {/* Barcode SVG */}
-                    <div className="my-1 flex items-center justify-center">
-                      <svg ref={previewSvgRef} />
+                        {/* Barcode SVG */}
+                        <div className="my-0.5 flex items-center justify-center max-w-full overflow-hidden">
+                          <svg ref={previewSvgRef} className="max-w-full h-auto" />
+                        </div>
+
+                        {/* Barcode number text */}
+                        <span
+                          className="font-mono font-bold text-gray-800 tracking-wider leading-none"
+                          style={{ fontSize: isSmall ? '7px' : isLarge ? '9.5px' : '8px' }}
+                        >
+                          {itemCode || 'CLAD0000000'}
+                        </span>
+
+                        {/* Product Title */}
+                        {settings.showItemName && (
+                          <span
+                            className="font-bold text-gray-800 truncate max-w-full leading-tight"
+                            style={{ fontSize: isSmall ? '7px' : isLarge ? '9.5px' : '8px' }}
+                          >
+                            {line1 || selectedProduct?.name || 'Item Name'}
+                          </span>
+                        )}
+
+                        {/* Variant / Category */}
+                        {line2 && (
+                          <span
+                            className="font-semibold text-gray-600 truncate max-w-full leading-tight"
+                            style={{ fontSize: isSmall ? '6.5px' : isLarge ? '8.5px' : '7.5px' }}
+                          >
+                            {line2}
+                          </span>
+                        )}
+
+                        {/* Price */}
+                        {settings.showSalePrice && (
+                          <span
+                            className="font-black text-black truncate max-w-full leading-none"
+                            style={{ fontSize: isSmall ? '8px' : isLarge ? '12px' : '9.5px' }}
+                          >
+                            {line3 || 'Price: ₹0'}
+                          </span>
+                        )}
+
+                        {/* Extra line */}
+                        {line4 && (
+                          <span
+                            className="text-gray-500 truncate max-w-full leading-none"
+                            style={{ fontSize: isSmall ? '6px' : isLarge ? '8px' : '7px' }}
+                          >
+                            {line4}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Sticker 2 if 2 labels per row */}
+                      {currentSizeConfig.labelsPerRow > 1 && (
+                        <div
+                          className="bg-white border border-gray-300 rounded-lg p-2 shadow-sm flex flex-col justify-between items-center text-center relative transition-all"
+                          style={{
+                            width: '138px',
+                            aspectRatio: `${currentSizeConfig.widthMm} / ${currentSizeConfig.heightMm}`,
+                            minHeight: isSmall ? '82px' : isLarge ? '145px' : '105px',
+                            maxHeight: '210px',
+                            boxSizing: 'border-box',
+                          }}
+                        >
+                          {/* Company / Brand */}
+                          {settings.showCompanyName && (
+                            <span
+                              className="font-black uppercase tracking-wider text-gray-900 leading-none truncate max-w-full"
+                              style={{ fontSize: isSmall ? '7.5px' : isLarge ? '11px' : '9px' }}
+                            >
+                              {header || BRAND_EN}
+                            </span>
+                          )}
+
+                          {/* Barcode SVG */}
+                          <div className="my-0.5 flex items-center justify-center max-w-full overflow-hidden">
+                            <svg ref={previewSvgRef2} className="max-w-full h-auto" />
+                          </div>
+
+                          {/* Barcode number text */}
+                          <span
+                            className="font-mono font-bold text-gray-800 tracking-wider leading-none"
+                            style={{ fontSize: isSmall ? '7px' : isLarge ? '9.5px' : '8px' }}
+                          >
+                            {itemCode || 'CLAD0000000'}
+                          </span>
+
+                          {/* Product Title */}
+                          {settings.showItemName && (
+                            <span
+                              className="font-bold text-gray-800 truncate max-w-full leading-tight"
+                              style={{ fontSize: isSmall ? '7px' : isLarge ? '9.5px' : '8px' }}
+                            >
+                              {line1 || selectedProduct?.name || 'Item Name'}
+                            </span>
+                          )}
+
+                          {/* Variant / Category */}
+                          {line2 && (
+                            <span
+                              className="font-semibold text-gray-600 truncate max-w-full leading-tight"
+                              style={{ fontSize: isSmall ? '6.5px' : isLarge ? '8.5px' : '7.5px' }}
+                            >
+                              {line2}
+                            </span>
+                          )}
+
+                          {/* Price */}
+                          {settings.showSalePrice && (
+                            <span
+                              className="font-black text-black truncate max-w-full leading-none"
+                              style={{ fontSize: isSmall ? '8px' : isLarge ? '12px' : '9.5px' }}
+                            >
+                              {line3 || 'Price: ₹0'}
+                            </span>
+                          )}
+
+                          {/* Extra line */}
+                          {line4 && (
+                            <span
+                              className="text-gray-500 truncate max-w-full leading-none"
+                              style={{ fontSize: isSmall ? '6px' : isLarge ? '8px' : '7px' }}
+                            >
+                              {line4}
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </div>
 
-                    {/* Item Code */}
-                    <span className="text-[10px] font-mono font-bold text-gray-800 tracking-wider">
-                      {itemCode || 'CLAD0000000'}
-                    </span>
-
-                    {/* Custom text lines */}
-                    <span className="text-[10px] font-bold text-gray-800 truncate max-w-full">
-                      {line1 || 'Line 1'}
-                    </span>
-                    <span className="text-[9px] font-medium text-gray-600 truncate max-w-full">
-                      {line2 || 'Line 2'}
-                    </span>
-                    <span className="text-[9px] font-bold text-black truncate max-w-full">
-                      {line3 || 'Line 3'}
-                    </span>
-                    {line4 && (
-                      <span className="text-[8px] text-gray-500 truncate max-w-full">
-                        {line4}
-                      </span>
-                    )}
+                    <div className="mt-2 text-[10px] font-bold text-gray-500">
+                      {settings.printerType === 'label'
+                        ? `Thermal Roll • ${currentSizeConfig.labelsPerRow} sticker${currentSizeConfig.labelsPerRow > 1 ? 's' : ''} per row`
+                        : 'Regular Printer (A4 Sheet Layout)'}
+                    </div>
                   </div>
 
                   {/* Add for Barcode Button */}

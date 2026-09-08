@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import { X, Printer, Copy, Check } from 'lucide-react'
 import { BarcodeLabel } from './BarcodeLabel'
 import { BRAND_EN } from '../../lib/brand'
+import { getAllLabelSizes } from '../../lib/barcode'
 
 export interface BarcodePrintModalProps {
   isOpen: boolean
@@ -20,12 +21,14 @@ type LabelSizePreset = {
   heightMm: number
 }
 
-const LABEL_PRESETS: LabelSizePreset[] = [
-  { name: 'Thermal Standard (50mm × 30mm)', widthMm: 50, heightMm: 30 },
-  { name: 'Thermal Compact (50mm × 25mm)', widthMm: 50, heightMm: 25 },
-  { name: 'Small Jewelry / Tag (38mm × 25mm)', widthMm: 38, heightMm: 25 },
-  { name: 'Large Sticker (60mm × 40mm)', widthMm: 60, heightMm: 40 },
-]
+const getAvailablePresets = (): LabelSizePreset[] => {
+  const sizes = getAllLabelSizes()
+  return sizes.map((s) => ({
+    name: `${s.name} (${s.widthMm}mm × ${s.heightMm}mm)`,
+    widthMm: s.widthMm,
+    heightMm: s.heightMm,
+  }))
+}
 
 export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
   isOpen,
@@ -37,8 +40,9 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
   mrp,
   defaultQuantity = 1,
 }) => {
+  const presets = getAvailablePresets()
   const [quantity, setQuantity] = useState(defaultQuantity)
-  const [selectedPreset, setSelectedPreset] = useState<LabelSizePreset>(LABEL_PRESETS[0])
+  const [selectedPreset, setSelectedPreset] = useState<LabelSizePreset>(presets[0] || { name: 'Thermal Standard', widthMm: 50, heightMm: 25 })
   const [copied, setCopied] = useState(false)
 
   if (!isOpen) return null
@@ -63,6 +67,28 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
     if (!doc) return
 
     const fullTitle = `${productName}${variantName ? ` (${variantName})` : ''}`
+
+    const isSmall = selectedPreset.heightMm <= 25
+    const isLarge = selectedPreset.heightMm >= 40
+
+    const barcodeHeight = isSmall
+      ? Math.min(13, Math.round(selectedPreset.heightMm * 0.44))
+      : isLarge
+      ? Math.min(26, Math.round(selectedPreset.heightMm * 0.48))
+      : Math.min(16, Math.round(selectedPreset.heightMm * 0.46))
+
+    const barcodeWidth = selectedPreset.widthMm <= 38
+      ? 0.82
+      : selectedPreset.widthMm >= 80
+      ? 1.45
+      : 0.95
+
+    const barcodeFontSize = isSmall ? 7.5 : isLarge ? 10 : 8
+    const headerFontSize = isSmall ? '7pt' : isLarge ? '11pt' : '8pt'
+    const titleFontSize = isSmall ? '6pt' : isLarge ? '9.5pt' : '7pt'
+    const tagFontSize = isSmall ? '5.5pt' : isLarge ? '8pt' : '6.5pt'
+    const priceFontSize = isSmall ? '8pt' : isLarge ? '13pt' : '9.5pt'
+    const stickerPadding = isSmall ? '0.6mm 1.2mm' : isLarge ? '1.8mm 2.5mm' : '1mm 1.6mm'
 
     // Build standalone HTML for the printed stickers with strict thermal proportions
     const stickersHtml = Array.from({ length: Math.max(1, quantity) })
@@ -118,7 +144,7 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
               height: ${selectedPreset.heightMm}mm;
               max-width: ${selectedPreset.widthMm}mm;
               max-height: ${selectedPreset.heightMm}mm;
-              padding: 0.8mm 1.5mm;
+              padding: ${stickerPadding};
               display: flex;
               flex-direction: column;
               justify-content: space-between;
@@ -142,10 +168,10 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
               align-items: center;
               justify-content: center;
               line-height: 1;
-              padding-bottom: 0.3mm;
+              padding-bottom: 0.2mm;
             }
             .brand {
-              font-size: 7.5pt;
+              font-size: ${headerFontSize};
               font-weight: 900;
               letter-spacing: 0.5px;
               text-transform: uppercase;
@@ -153,13 +179,13 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
               line-height: 1;
             }
             .prod-title {
-              font-size: 6.5pt;
+              font-size: ${titleFontSize};
               font-weight: 700;
               white-space: nowrap;
               overflow: hidden;
               text-overflow: ellipsis;
               max-width: 96%;
-              margin-top: 0.4mm;
+              margin-top: 0.2mm;
               color: #111;
               line-height: 1;
             }
@@ -183,23 +209,23 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
               justify-content: space-between;
               align-items: flex-end;
               border-top: 0.5pt solid #000;
-              padding-top: 0.4mm;
+              padding-top: 0.3mm;
               line-height: 1;
-              margin-top: 0.2mm;
+              margin-top: 0.1mm;
             }
             .retail-tag {
-              font-size: 5.5pt;
+              font-size: ${tagFontSize};
               font-weight: 800;
               color: #444;
             }
             .mrp {
               text-decoration: line-through;
               color: #555;
-              font-size: 6pt;
+              font-size: ${tagFontSize};
               font-weight: 600;
             }
             .price {
-              font-size: 8.5pt;
+              font-size: ${priceFontSize};
               font-weight: 900;
               color: #000;
             }
@@ -211,9 +237,9 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
             window.onload = function() {
               JsBarcode(".barcode-svg").init({
                 format: "CODE128",
-                width: ${selectedPreset.widthMm <= 38 ? 0.85 : 0.95},
-                height: ${selectedPreset.heightMm <= 25 ? 13 : 16},
-                fontSize: 7.5,
+                width: ${barcodeWidth},
+                height: ${barcodeHeight},
+                fontSize: ${barcodeFontSize},
                 font: "Arial, sans-serif",
                 margin: 0,
                 textMargin: 1,
@@ -336,12 +362,12 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
               <select
                 value={selectedPreset.name}
                 onChange={(e) => {
-                  const preset = LABEL_PRESETS.find((p) => p.name === e.target.value)
+                  const preset = presets.find((p) => p.name === e.target.value)
                   if (preset) setSelectedPreset(preset)
                 }}
                 className="w-full py-2.5 px-3 rounded-xl border-2 border-[#E8D399] bg-[#FBFAF6] font-bold text-sm text-gray-900 outline-none focus:border-[#0A0A0A] focus:bg-white cursor-pointer"
               >
-                {LABEL_PRESETS.map((p) => (
+                {presets.map((p) => (
                   <option key={p.name} value={p.name}>
                     {p.name}
                   </option>

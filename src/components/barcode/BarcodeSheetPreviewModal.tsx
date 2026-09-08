@@ -34,8 +34,15 @@ export const BarcodeSheetPreviewModal: React.FC<BarcodeSheetPreviewModalProps> =
       }
     })
 
+  const isSmall = sizeConfig.heightMm <= 25
+  const isLarge = sizeConfig.heightMm >= 40
+
   useEffect(() => {
     if (!isOpen || !containerRef.current) return
+
+    const previewWidth =
+      sizeConfig.widthMm <= 38 ? 0.95 : sizeConfig.widthMm >= 80 ? 1.5 : 1.25
+    const previewHeight = isSmall ? 22 : isLarge ? 44 : 30
 
     // Render SVG barcode for each label
     const svgs = containerRef.current.querySelectorAll<SVGSVGElement>('svg.preview-barcode-svg')
@@ -43,15 +50,15 @@ export const BarcodeSheetPreviewModal: React.FC<BarcodeSheetPreviewModalProps> =
       const code = svg.getAttribute('data-barcode')
       if (code) {
         renderBarcodeSvg(svg, code, {
-          width: 1.3,
-          height: 28,
-          fontSize: 10,
+          width: previewWidth,
+          height: previewHeight,
+          fontSize: 8,
           displayValue: false,
           margin: 0,
         })
       }
     })
-  }, [isOpen, individualLabels.length])
+  }, [isOpen, individualLabels.length, sizeConfig.id, sizeConfig.widthMm, sizeConfig.heightMm, isSmall, isLarge])
 
   if (!isOpen) return null
 
@@ -68,9 +75,9 @@ export const BarcodeSheetPreviewModal: React.FC<BarcodeSheetPreviewModalProps> =
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-[#0A0A0A] text-white">
           <div>
-            <h3 className="text-base font-black tracking-wide text-white">Preview</h3>
+            <h3 className="text-base font-black tracking-wide text-white">Print Sheet Preview</h3>
             <p className="text-xs text-[#D4AF37] font-semibold">
-              {individualLabels.length} Labels ({sizeConfig.name})
+              {individualLabels.length} Labels ({sizeConfig.name} • {sizeConfig.widthMm} × {sizeConfig.heightMm} mm)
             </p>
           </div>
           <button
@@ -91,49 +98,74 @@ export const BarcodeSheetPreviewModal: React.FC<BarcodeSheetPreviewModalProps> =
             {individualLabels.map((label, idx) => (
               <div
                 key={`${label.id}-${idx}`}
-                className="bg-white rounded-xl border border-gray-300 p-3 shadow-sm flex flex-col items-center justify-center text-center relative"
+                className="bg-white rounded-xl border border-gray-300 p-2.5 shadow-sm flex flex-col justify-between items-center text-center relative transition-all"
                 style={{
-                  minHeight: '140px',
+                  aspectRatio: `${sizeConfig.widthMm} / ${sizeConfig.heightMm}`,
+                  minHeight: isSmall ? '88px' : isLarge ? '150px' : '115px',
+                  boxSizing: 'border-box',
                 }}
               >
+                {/* Size badge */}
+                <span className="absolute top-1 right-2 text-[8px] font-bold text-gray-400 select-none">
+                  {sizeConfig.widthMm}×{sizeConfig.heightMm}mm
+                </span>
+
                 {/* Header */}
                 {label.header && (
-                  <span className="text-[11px] font-black uppercase tracking-wider text-gray-900 leading-tight">
+                  <span
+                    className="font-black uppercase tracking-wider text-gray-900 leading-none truncate max-w-[85%]"
+                    style={{ fontSize: isSmall ? '7.5px' : isLarge ? '11px' : '9px' }}
+                  >
                     {label.header}
                   </span>
                 )}
 
                 {/* Barcode SVG */}
-                <div className="my-1 flex items-center justify-center">
+                <div className="my-0.5 flex items-center justify-center max-w-full overflow-hidden">
                   <svg
-                    className="preview-barcode-svg"
+                    className="preview-barcode-svg max-w-full h-auto"
                     data-barcode={label.barcodeValue}
                   />
                 </div>
 
                 {/* Item Code Number */}
-                <span className="text-[10px] font-mono font-bold text-gray-800 tracking-wider">
+                <span
+                  className="font-mono font-bold text-gray-800 tracking-wider leading-none"
+                  style={{ fontSize: isSmall ? '7px' : isLarge ? '9.5px' : '8px' }}
+                >
                   {label.barcodeValue}
                 </span>
 
                 {/* Lines */}
                 {label.line1 && (
-                  <span className="text-[10px] font-bold text-gray-700 truncate max-w-full">
+                  <span
+                    className="font-bold text-gray-700 truncate max-w-full leading-tight"
+                    style={{ fontSize: isSmall ? '7px' : isLarge ? '9.5px' : '8px' }}
+                  >
                     {label.line1}
                   </span>
                 )}
                 {label.line2 && (
-                  <span className="text-[9px] font-semibold text-gray-600 truncate max-w-full">
+                  <span
+                    className="font-semibold text-gray-600 truncate max-w-full leading-tight"
+                    style={{ fontSize: isSmall ? '6.5px' : isLarge ? '8.5px' : '7.5px' }}
+                  >
                     {label.line2}
                   </span>
                 )}
                 {label.line3 && (
-                  <span className="text-[9px] font-black text-[#0A0A0A] truncate max-w-full">
+                  <span
+                    className="font-black text-[#0A0A0A] truncate max-w-full leading-none"
+                    style={{ fontSize: isSmall ? '8px' : isLarge ? '12px' : '9.5px' }}
+                  >
                     {label.line3}
                   </span>
                 )}
                 {label.line4 && (
-                  <span className="text-[8px] text-gray-500 truncate max-w-full">
+                  <span
+                    className="text-gray-500 truncate max-w-full leading-none"
+                    style={{ fontSize: isSmall ? '6px' : isLarge ? '8px' : '7px' }}
+                  >
                     {label.line4}
                   </span>
                 )}
