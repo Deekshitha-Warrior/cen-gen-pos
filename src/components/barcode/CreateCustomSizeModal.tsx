@@ -14,7 +14,7 @@ export const CreateCustomSizeModal: React.FC<CreateCustomSizeModalProps> = ({
   onCreated,
 }) => {
   const [name, setName] = useState('')
-  const [labelsPerRow, setLabelsPerRow] = useState<number>(2)
+  const [labelsPerRow, setLabelsPerRow] = useState<number>(1)
   const [widthMm, setWidthMm] = useState<string>('50')
   const [heightMm, setHeightMm] = useState<string>('38')
   const [horizontalGapMm, setHorizontalGapMm] = useState<string>('2')

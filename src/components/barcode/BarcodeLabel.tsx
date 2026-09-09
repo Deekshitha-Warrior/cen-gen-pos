@@ -28,19 +28,25 @@ export const BarcodeLabel: React.FC<BarcodeLabelProps> = ({
   const isSmall = heightMm <= 25
   const isLarge = heightMm >= 40
 
+  // Dynamic calculation for barcode dimensions and typography
+  const barcodeHeightPx = Math.max(22, Math.round(heightMm * 0.50 * 3.7795))
+  const printableWidthPx = Math.max(30, (widthMm - 3) * 3.7795)
+  const barcodeBarWidth = Math.max(0.80, Math.min(1.85, Math.round((printableWidthPx / 115) * 100) / 100))
+  const barcodeFontSize = Math.max(6.5, Math.min(11, Math.round(heightMm * 0.28 * 10) / 10))
+
   useEffect(() => {
     if (svgRef.current && barcodeValue) {
       renderBarcodeSvg(svgRef.current, barcodeValue, {
-        width: widthMm <= 38 ? 0.85 : widthMm >= 80 ? 1.35 : 1.0,
-        height: isSmall ? 13 : isLarge ? 26 : 16,
-        fontSize: isSmall ? 7.5 : isLarge ? 10 : 8,
+        width: barcodeBarWidth,
+        height: barcodeHeightPx,
+        fontSize: barcodeFontSize,
         font: 'Arial, sans-serif',
         margin: 0,
         textMargin: 1,
         displayValue: true,
       })
     }
-  }, [barcodeValue, widthMm, heightMm, isSmall, isLarge])
+  }, [barcodeValue, widthMm, heightMm, barcodeHeightPx, barcodeBarWidth, barcodeFontSize])
 
   const fullTitle = `${productName}${variantName ? ` (${variantName})` : ''}`
 

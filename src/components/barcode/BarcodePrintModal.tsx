@@ -71,24 +71,22 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
     const isSmall = selectedPreset.heightMm <= 25
     const isLarge = selectedPreset.heightMm >= 40
 
-    const barcodeHeight = isSmall
-      ? Math.min(13, Math.round(selectedPreset.heightMm * 0.44))
-      : isLarge
-      ? Math.min(26, Math.round(selectedPreset.heightMm * 0.48))
-      : Math.min(16, Math.round(selectedPreset.heightMm * 0.46))
+    // Exact mathematical calculation for thermal barcode size
+    // 1mm = 3.7795px at standard 96 DPI CSS print
+    // Barcode occupies ~50% of the total label sticker height
+    const barcodeHeightPx = Math.max(22, Math.round(selectedPreset.heightMm * 0.50 * 3.7795))
+    const printableWidthPx = Math.max(30, (selectedPreset.widthMm - 3) * 3.7795)
+    const barcodeBarWidth = Math.max(0.80, Math.min(1.85, Math.round((printableWidthPx / 115) * 100) / 100))
 
-    const barcodeWidth = selectedPreset.widthMm <= 38
-      ? 0.82
-      : selectedPreset.widthMm >= 80
-      ? 1.45
-      : 0.95
-
-    const barcodeFontSize = isSmall ? 7.5 : isLarge ? 10 : 8
-    const headerFontSize = isSmall ? '7pt' : isLarge ? '11pt' : '8pt'
-    const titleFontSize = isSmall ? '6pt' : isLarge ? '9.5pt' : '7pt'
-    const tagFontSize = isSmall ? '5.5pt' : isLarge ? '8pt' : '6.5pt'
-    const priceFontSize = isSmall ? '8pt' : isLarge ? '13pt' : '9.5pt'
-    const stickerPadding = isSmall ? '0.6mm 1.2mm' : isLarge ? '1.8mm 2.5mm' : '1mm 1.6mm'
+    const barcodeFontSize = Math.max(6.5, Math.min(11, Math.round(selectedPreset.heightMm * 0.28 * 10) / 10))
+    const headerFontSize = Math.max(6, Math.min(12, Math.round(selectedPreset.heightMm * 0.30 * 10) / 10)) + 'pt'
+    const titleFontSize = Math.max(5.5, Math.min(10, Math.round(selectedPreset.heightMm * 0.25 * 10) / 10)) + 'pt'
+    const tagFontSize = Math.max(5, Math.min(8.5, Math.round(selectedPreset.heightMm * 0.22 * 10) / 10)) + 'pt'
+    const priceFontSize = Math.max(7, Math.min(13.5, Math.round(selectedPreset.heightMm * 0.35 * 10) / 10)) + 'pt'
+    const paddingY = Math.max(0.4, Math.round(selectedPreset.heightMm * 0.03 * 10) / 10) + 'mm'
+    const paddingX = Math.max(0.8, Math.round(selectedPreset.widthMm * 0.03 * 10) / 10) + 'mm'
+    const stickerPadding = `${paddingY} ${paddingX}`
+    const barcodeBoxHeightMm = (selectedPreset.heightMm * 0.50).toFixed(1) + 'mm'
 
     // Build standalone HTML for the printed stickers with strict thermal proportions
     const stickersHtml = Array.from({ length: Math.max(1, quantity) })
@@ -191,6 +189,8 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
             }
             .barcode-box {
               width: 100%;
+              height: ${barcodeBoxHeightMm};
+              max-height: ${barcodeBoxHeightMm};
               display: flex;
               justify-content: center;
               align-items: center;
@@ -200,8 +200,8 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
             .barcode-svg {
               display: block;
               margin: 0 auto;
-              max-width: 95%;
-              height: auto;
+              max-width: 98%;
+              max-height: 100%;
             }
             .footer {
               width: 100%;
@@ -237,8 +237,8 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
             window.onload = function() {
               JsBarcode(".barcode-svg").init({
                 format: "CODE128",
-                width: ${barcodeWidth},
-                height: ${barcodeHeight},
+                width: ${barcodeBarWidth},
+                height: ${barcodeHeightPx},
                 fontSize: ${barcodeFontSize},
                 font: "Arial, sans-serif",
                 margin: 0,

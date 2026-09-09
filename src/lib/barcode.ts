@@ -11,10 +11,11 @@ export interface LabelSizeConfig {
 }
 
 export const DEFAULT_LABEL_SIZES: LabelSizeConfig[] = [
-  { id: '2_50x25', name: '2 Labels (50×25mm)', labelsPerRow: 2, widthMm: 50, heightMm: 25, horizontalGapMm: 2 },
-  { id: '1_100x50', name: '1 Label (100×50mm)', labelsPerRow: 1, widthMm: 100, heightMm: 50, horizontalGapMm: 0 },
-  { id: '1_50x25', name: '1 Label (50×25mm)', labelsPerRow: 1, widthMm: 50, heightMm: 25, horizontalGapMm: 0 },
-  { id: '2_38x25', name: '2 Labels (38×25mm)', labelsPerRow: 2, widthMm: 38, heightMm: 25, horizontalGapMm: 2 },
+  { id: '2_38x25', name: '38 × 25 mm (Tag / Jewelry)', labelsPerRow: 1, widthMm: 38, heightMm: 25, horizontalGapMm: 0 },
+  { id: '1_50x25', name: '50 × 25 mm (Standard Compact)', labelsPerRow: 1, widthMm: 50, heightMm: 25, horizontalGapMm: 0 },
+  { id: '2_50x25', name: '50 × 38 mm (Retail Standard)', labelsPerRow: 1, widthMm: 50, heightMm: 38, horizontalGapMm: 0 },
+  { id: '1_60x40', name: '60 × 40 mm (Shipping / Product)', labelsPerRow: 1, widthMm: 60, heightMm: 40, horizontalGapMm: 0 },
+  { id: '1_100x50', name: '100 × 50 mm (Large Carton / Box)', labelsPerRow: 1, widthMm: 100, heightMm: 50, horizontalGapMm: 0 },
 ]
 
 export interface BarcodeSettings {

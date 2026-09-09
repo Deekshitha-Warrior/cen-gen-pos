@@ -11,6 +11,8 @@ import {
   Search,
   X,
   Filter,
+  ChevronDown,
+  SlidersHorizontal,
 } from 'lucide-react'
 import {
   expenseService,
@@ -43,9 +45,11 @@ export const ExpensesView: React.FC = () => {
   // Filters
   const [fromDate, setFromDate] = useState('')
   const [toDate, setToDate] = useState('')
-  const [activePreset, setActivePreset] = useState<'all' | 'today' | 'week' | 'month'>('all')
+  const [activePreset, setActivePreset] = useState<'all' | 'today' | 'week' | 'month' | 'custom'>('all')
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>('all')
+  const [selectedPaymentMode, setSelectedPaymentMode] = useState<string>('all')
   const [searchQuery, setSearchQuery] = useState('')
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false)
 
   const loadMetrics = useCallback(async () => {
     try {
@@ -89,11 +93,24 @@ export const ExpensesView: React.FC = () => {
     void refreshAll()
   }, [refreshAll])
 
-  // Filter expenses list by search query
+  // Calculate count of active filters (excluding keyword search)
+  const activeFiltersCount = useMemo(() => {
+    let count = 0
+    if (selectedCategoryId !== 'all') count++
+    if (activePreset !== 'all') count++
+    if (selectedPaymentMode !== 'all') count++
+    return count
+  }, [selectedCategoryId, activePreset, selectedPaymentMode])
+
+  // Filter expenses list by search query and payment mode
   const filteredExpenses = useMemo(() => {
-    if (!searchQuery.trim()) return expenses
+    let list = expenses
+    if (selectedPaymentMode !== 'all') {
+      list = list.filter((e) => e.payment_mode?.toLowerCase() === selectedPaymentMode.toLowerCase())
+    }
+    if (!searchQuery.trim()) return list
     const q = searchQuery.toLowerCase().trim()
-    return expenses.filter(
+    return list.filter(
       (e) =>
         e.description?.toLowerCase().includes(q) ||
         e.category_name?.toLowerCase().includes(q) ||
@@ -101,10 +118,10 @@ export const ExpensesView: React.FC = () => {
         e.recorded_by_name?.toLowerCase().includes(q) ||
         String(e.amount).includes(q)
     )
-  }, [expenses, searchQuery])
+  }, [expenses, searchQuery, selectedPaymentMode])
 
   // Handle Preset Clicks (Synchronizes FROM and TO dates)
-  const applyDatePreset = (preset: 'all' | 'today' | 'week' | 'month') => {
+  const applyDatePreset = (preset: 'all' | 'today' | 'week' | 'month' | 'custom') => {
     setActivePreset(preset)
     const today = new Date()
     const todayStr = today.toISOString().slice(0, 10)
@@ -125,6 +142,8 @@ export const ExpensesView: React.FC = () => {
       const monthStart = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-01`
       setFromDate(monthStart)
       setToDate(todayStr)
+    } else if (preset === 'custom') {
+      setShowAdvancedFilters(true)
     }
   }
 
@@ -133,7 +152,9 @@ export const ExpensesView: React.FC = () => {
     setToDate('')
     setActivePreset('all')
     setSelectedCategoryId('all')
+    setSelectedPaymentMode('all')
     setSearchQuery('')
+    setShowAdvancedFilters(false)
   }
 
 
@@ -241,96 +262,38 @@ export const ExpensesView: React.FC = () => {
           </div>
 
           {/* Filter Bar */}
-          <div className="bg-white border border-gray-200 rounded-3xl p-4 sm:p-5 shadow-xs space-y-3.5">
-            {/* Top Row: Date Presets & Action Buttons */}
-            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-              {/* Date Filters & Presets */}
-              <div className="flex flex-wrap items-center gap-2.5">
-                <div className="flex items-center gap-2">
-                  <div className="relative">
-                    <input
-                      type="date"
-                      value={fromDate}
-                      onChange={(e) => {
-                        setFromDate(e.target.value)
-                        setActivePreset('all')
-                      }}
-                      className="h-10 pl-8 pr-2.5 rounded-xl border border-gray-300 bg-[#FAFAFA] text-xs font-bold text-gray-900 outline-none focus:border-[#0A0A0A]"
-                    />
-                    <Calendar size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-                  </div>
-                  <span className="text-xs font-bold text-gray-400">to</span>
-                  <div className="relative">
-                    <input
-                      type="date"
-                      value={toDate}
-                      onChange={(e) => {
-                        setToDate(e.target.value)
-                        setActivePreset('all')
-                      }}
-                      className="h-10 pl-8 pr-2.5 rounded-xl border border-gray-300 bg-[#FAFAFA] text-xs font-bold text-gray-900 outline-none focus:border-[#0A0A0A]"
-                    />
-                    <Calendar size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-                  </div>
-                </div>
-
-                {/* Preset Buttons */}
-                <div className="flex items-center gap-1.5 bg-[#FAFAFA] p-1 rounded-xl border border-gray-200">
-                  {(['all', 'today', 'week', 'month'] as const).map((p) => (
-                    <button
-                      key={p}
-                      type="button"
-                      onClick={() => applyDatePreset(p)}
-                      className={`px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
-                        activePreset === p
-                          ? 'bg-[#0A0A0A] text-[#D4AF37] shadow-xs'
-                          : 'text-gray-600 hover:text-black'
-                      }`}
-                    >
-                      {p === 'all' ? 'All Time' : p === 'today' ? 'Today' : p === 'week' ? 'This Week' : 'Month'}
-                    </button>
-                  ))}
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => void refreshAll()}
-                  title="Refresh Expenses"
-                  className="h-10 w-10 rounded-xl border border-gray-300 bg-white flex items-center justify-center text-gray-600 hover:text-black hover:border-black transition-all cursor-pointer"
-                >
-                  <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-                </button>
+          <div className="bg-white border border-gray-200 rounded-2xl p-3 sm:p-4 shadow-xs space-y-3">
+            {/* Main Bar: Search, Grouped Dropdowns, Filter Toggle, and Actions */}
+            <div className="flex flex-col lg:flex-row items-stretch lg:items-center gap-2.5">
+              {/* Search Box */}
+              <div className="relative flex-1 min-w-0">
+                <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search description, category, staff, amount..."
+                  className="w-full h-10 pl-9 pr-8 rounded-xl border border-gray-200 bg-[#F9FAFB] text-xs font-semibold text-gray-900 placeholder-gray-400 outline-none focus:border-[#D4AF37] focus:bg-white transition-colors"
+                />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery('')}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 cursor-pointer"
+                  >
+                    <X size={14} />
+                  </button>
+                )}
               </div>
 
-              {/* Action Buttons */}
-              <div className="flex items-center gap-2.5">
-                <button
-                  type="button"
-                  onClick={() => exportExpensesToCSV(filteredExpenses)}
-                  disabled={filteredExpenses.length === 0}
-                  className="h-10 px-4 rounded-xl border border-gray-300 bg-white text-xs font-bold text-gray-800 hover:bg-gray-100 transition-all flex items-center gap-2 cursor-pointer shadow-xs disabled:opacity-40"
-                >
-                  <Download size={14} /> Export CSV
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setIsRecordModalOpen(true)}
-                  className="h-10 px-4 rounded-xl bg-[#0A0A0A] border border-[#D4AF37] text-[#D4AF37] text-xs font-bold hover:bg-[#1A1A1A] transition-all shadow-md flex items-center gap-2 cursor-pointer"
-                >
-                  <Plus size={15} /> Record Expense
-                </button>
-              </div>
-            </div>
-
-            {/* Bottom Row: Category Dropdown & Keyword Search Filter */}
-            <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 pt-3 border-t border-gray-100">
-              {/* Category Dropdown */}
-              <div className="sm:col-span-4 lg:col-span-3">
-                <div className="relative">
+              {/* Controls Group: Category Dropdown, Date Preset Dropdown, Filters Toggle */}
+              <div className="grid grid-cols-3 sm:flex items-center gap-2 shrink-0">
+                {/* Category Dropdown */}
+                <div className="relative min-w-0">
                   <select
                     value={selectedCategoryId}
                     onChange={(e) => setSelectedCategoryId(e.target.value)}
-                    className="w-full h-10 pl-9 pr-8 rounded-xl border border-gray-300 bg-[#FAFAFA] text-xs font-bold text-gray-900 outline-none focus:border-[#0A0A0A] cursor-pointer appearance-none"
+                    className="w-full sm:w-36 lg:w-40 h-10 appearance-none pl-3 pr-7 rounded-xl bg-[#F9FAFB] border border-gray-200 text-xs font-bold text-gray-800 focus:outline-none focus:border-[#D4AF37] cursor-pointer hover:bg-gray-100 transition-colors truncate"
                   >
                     <option value="all">All Categories</option>
                     {categories.map((cat) => (
@@ -339,46 +302,162 @@ export const ExpensesView: React.FC = () => {
                       </option>
                     ))}
                   </select>
-                  <Filter size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-                  <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400 text-[10px]">
-                    ▼
-                  </div>
+                  <ChevronDown size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
                 </div>
+
+                {/* Date Preset Dropdown */}
+                <div className="relative min-w-0">
+                  <select
+                    value={activePreset}
+                    onChange={(e) => {
+                      const val = e.target.value as 'all' | 'today' | 'week' | 'month' | 'custom'
+                      applyDatePreset(val)
+                    }}
+                    className="w-full sm:w-32 lg:w-36 h-10 appearance-none pl-3 pr-7 rounded-xl bg-[#F9FAFB] border border-gray-200 text-xs font-bold text-gray-800 focus:outline-none focus:border-[#D4AF37] cursor-pointer hover:bg-gray-100 transition-colors truncate"
+                  >
+                    <option value="all">All Dates</option>
+                    <option value="today">Today</option>
+                    <option value="week">This Week</option>
+                    <option value="month">This Month</option>
+                    <option value="custom">Custom...</option>
+                  </select>
+                  <ChevronDown size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
+                </div>
+
+                {/* Detailed Filters Toggle Button */}
+                <button
+                  type="button"
+                  onClick={() => setShowAdvancedFilters((v) => !v)}
+                  className={`w-full sm:w-auto h-10 px-2.5 sm:px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer min-w-0 shrink-0 ${
+                    showAdvancedFilters || activeFiltersCount > 0
+                      ? 'bg-[#0A0A0A] text-white border-[#0A0A0A]'
+                      : 'bg-[#F9FAFB] text-gray-700 border-gray-200 hover:bg-gray-100'
+                  }`}
+                  title="Toggle detailed filters"
+                >
+                  <SlidersHorizontal size={12} className="shrink-0" />
+                  <span className="truncate">Filters</span>
+                  {activeFiltersCount > 0 && (
+                    <span className="w-4 h-4 rounded-full bg-[#D4AF37] text-black text-[9px] font-black flex items-center justify-center shrink-0">
+                      {activeFiltersCount}
+                    </span>
+                  )}
+                  <ChevronDown size={11} className={`transition-transform duration-200 shrink-0 ${showAdvancedFilters ? 'rotate-180' : ''}`} />
+                </button>
               </div>
 
-              {/* Text Search Box */}
-              <div className="sm:col-span-8 lg:col-span-9 flex items-center gap-2">
-                <div className="relative flex-1">
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Search by description, category, staff name, or amount..."
-                    className="w-full h-10 pl-9 pr-9 rounded-xl border border-gray-300 bg-[#FAFAFA] text-xs font-medium text-gray-900 outline-none focus:border-[#0A0A0A]"
-                  />
-                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-                  {searchQuery && (
+              {/* Action Buttons: Refresh, Export CSV, Record Expense */}
+              <div className="flex items-center gap-2 shrink-0 justify-end">
+                <button
+                  type="button"
+                  onClick={() => void refreshAll()}
+                  title="Refresh Expenses"
+                  className="h-10 w-10 rounded-xl border border-gray-200 bg-[#F9FAFB] hover:bg-gray-100 flex items-center justify-center text-gray-600 hover:text-black transition-colors cursor-pointer shrink-0"
+                >
+                  <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => exportExpensesToCSV(filteredExpenses)}
+                  disabled={filteredExpenses.length === 0}
+                  className="h-10 px-3 sm:px-3.5 rounded-xl border border-gray-200 bg-[#F9FAFB] text-xs font-bold text-gray-800 hover:bg-gray-100 transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-40 shrink-0 shadow-xs"
+                >
+                  <Download size={13} />
+                  <span className="hidden sm:inline">Export</span> CSV
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setIsRecordModalOpen(true)}
+                  className="h-10 px-3 sm:px-4 rounded-xl bg-[#0A0A0A] border border-[#D4AF37] text-[#D4AF37] text-xs font-bold hover:bg-[#1A1A1A] transition-all shadow-md flex items-center gap-1.5 cursor-pointer shrink-0"
+                >
+                  <Plus size={14} />
+                  <span className="whitespace-nowrap">Record Expense</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Collapsible Advanced Filters Panel */}
+            {showAdvancedFilters && (
+              <div className="pt-3 pb-1 border-t border-gray-100 space-y-3 animate-in fade-in slide-in-from-top-2 duration-200">
+                <div className="flex items-center justify-between text-xs font-bold text-gray-500">
+                  <span className="uppercase text-[10px] tracking-wider text-gray-600 flex items-center gap-1">
+                    <SlidersHorizontal size={11} /> Detailed Filters
+                  </span>
+                  {(activeFiltersCount > 0 || searchQuery) && (
                     <button
                       type="button"
-                      onClick={() => setSearchQuery('')}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 cursor-pointer"
+                      onClick={resetAllFilters}
+                      className="text-[11px] font-bold text-red-600 hover:underline cursor-pointer"
                     >
-                      <X size={14} />
+                      Reset All Filters
                     </button>
                   )}
                 </div>
 
-                {(selectedCategoryId !== 'all' || searchQuery || fromDate || toDate) && (
-                  <button
-                    type="button"
-                    onClick={resetAllFilters}
-                    className="h-10 px-3 rounded-xl border border-gray-200 bg-gray-50 text-gray-600 hover:text-black hover:bg-gray-100 text-xs font-bold whitespace-nowrap transition-colors cursor-pointer"
-                  >
-                    Reset
-                  </button>
-                )}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {/* From Date */}
+                  <div>
+                    <label className="text-[10px] font-bold text-gray-500 uppercase block mb-1">
+                      From Date
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="date"
+                        value={fromDate}
+                        onChange={(e) => {
+                          setFromDate(e.target.value)
+                          setActivePreset('custom')
+                        }}
+                        className="w-full h-10 pl-9 pr-3 rounded-xl border border-gray-200 bg-[#F9FAFB] text-xs font-semibold text-gray-800 outline-none focus:border-[#D4AF37] focus:bg-white"
+                      />
+                      <Calendar size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                    </div>
+                  </div>
+
+                  {/* To Date */}
+                  <div>
+                    <label className="text-[10px] font-bold text-gray-500 uppercase block mb-1">
+                      To Date
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="date"
+                        value={toDate}
+                        onChange={(e) => {
+                          setToDate(e.target.value)
+                          setActivePreset('custom')
+                        }}
+                        className="w-full h-10 pl-9 pr-3 rounded-xl border border-gray-200 bg-[#F9FAFB] text-xs font-semibold text-gray-800 outline-none focus:border-[#D4AF37] focus:bg-white"
+                      />
+                      <Calendar size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                    </div>
+                  </div>
+
+                  {/* Payment Mode */}
+                  <div>
+                    <label className="text-[10px] font-bold text-gray-500 uppercase block mb-1">
+                      Payment Mode
+                    </label>
+                    <div className="relative">
+                      <select
+                        value={selectedPaymentMode}
+                        onChange={(e) => setSelectedPaymentMode(e.target.value)}
+                        className="w-full h-10 appearance-none pl-3 pr-7 rounded-xl bg-[#F9FAFB] border border-gray-200 text-xs font-semibold text-gray-800 focus:outline-none focus:border-[#D4AF37] cursor-pointer hover:bg-gray-100 transition-colors"
+                      >
+                        <option value="all">All Payment Modes</option>
+                        <option value="cash">Cash</option>
+                        <option value="upi">UPI / QR</option>
+                        <option value="card">Credit / Debit Card</option>
+                        <option value="bank_transfer">Bank Transfer / NetBanking</option>
+                      </select>
+                      <ChevronDown size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
+                    </div>
+                  </div>
+                </div>
               </div>
-            </div>
+            )}
           </div>
 
           {/* Expenses Table */}
