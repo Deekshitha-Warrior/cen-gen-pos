@@ -8,11 +8,38 @@ import { isSupabaseConfigured, supabase } from './lib/supabase'
 import { LowStockAlarmModal } from './components/dashboard/LowStockAlarmModal'
 import { useLowStockMonitor } from './hooks/useLowStockMonitor'
 
-const Dashboard = lazy(() => import('./pages/Dashboard'))
-const Pos = lazy(() => import('./pages/Pos'))
-const DigitalInvoice = lazy(() => import('./pages/DigitalInvoice'))
-const Login = lazy(() => import('./pages/Login'))
-const AdminLogin = lazy(() => import('./pages/AdminLogin'))
+function lazyWithRetry<T extends React.ComponentType<any>>(
+  factory: () => Promise<{ default: T }>
+) {
+  return lazy(async () => {
+    try {
+      return await factory()
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err)
+      if (
+        errMsg.includes('Failed to fetch dynamically imported module') ||
+        errMsg.includes('Importing a module script failed') ||
+        errMsg.includes('MIME type') ||
+        errMsg.includes('error loading dynamically imported module')
+      ) {
+        const lastReload = sessionStorage.getItem('chunk_reload_ts')
+        const now = Date.now()
+        if (!lastReload || now - Number(lastReload) > 10000) {
+          sessionStorage.setItem('chunk_reload_ts', String(now))
+          window.location.reload()
+          return new Promise(() => {}) // Hold suspense while reloading
+        }
+      }
+      throw err
+    }
+  })
+}
+
+const Dashboard = lazyWithRetry(() => import('./pages/Dashboard'))
+const Pos = lazyWithRetry(() => import('./pages/Pos'))
+const DigitalInvoice = lazyWithRetry(() => import('./pages/DigitalInvoice'))
+const Login = lazyWithRetry(() => import('./pages/Login'))
+const AdminLogin = lazyWithRetry(() => import('./pages/AdminLogin'))
 
 function LoadingSpinner() {
   return (
