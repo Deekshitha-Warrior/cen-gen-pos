@@ -151,17 +151,21 @@ export const CreateBarcodeModal: React.FC<CreateBarcodeModalProps> = ({
 
   // Update live preview SVG with dynamic dimension calculations
   useEffect(() => {
-    if (!itemCode) return
+    const codeToRender = (itemCode && itemCode.trim()) || 'CLAD0000000'
 
     // Proportional preview dimensions: fit comfortably within preview box
-    const previewScale = Math.min(220 / currentSizeConfig.widthMm, 150 / currentSizeConfig.heightMm)
+    const previewScale = Math.min(230 / currentSizeConfig.widthMm, 150 / currentSizeConfig.heightMm)
     const previewWidth = Math.round(currentSizeConfig.widthMm * previewScale)
     const previewHeight = Math.round(currentSizeConfig.heightMm * previewScale)
-    const previewBarcodeHeight = Math.max(22, Math.round(previewHeight * 0.48))
-    const previewBarcodeWidth = Math.max(0.82, Math.min(1.85, Math.round(((previewWidth * 0.85) / 115) * 100) / 100))
+    const previewBarcodeHeight = Math.max(26, Math.round(previewHeight * 0.46))
+    const codeLength = codeToRender.length
+    const previewBarcodeWidth = Math.max(
+      0.82,
+      Math.min(1.85, Math.round(((previewWidth * 0.84) / ((codeLength + 2) * 11 + 2)) * 100) / 100)
+    )
 
     if (previewSvgRef.current) {
-      renderBarcodeSvg(previewSvgRef.current, itemCode, {
+      renderBarcodeSvg(previewSvgRef.current, codeToRender, {
         width: previewBarcodeWidth,
         height: previewBarcodeHeight,
         fontSize: Math.max(7, Math.round(previewHeight * 0.08)),
@@ -628,7 +632,7 @@ export const CreateBarcodeModal: React.FC<CreateBarcodeModalProps> = ({
           <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">
             {/* TOP CARD: 2-COLUMN INTAKE FORM */}
             <div className="bg-[#FBFAF6] border border-gray-200 rounded-2xl p-4 sm:p-5 shadow-sm">
-              <div className="grid grid-cols-1 lg:grid-cols-[1fr_260px] gap-6 items-start">
+              <div className="grid grid-cols-1 lg:grid-cols-[1fr_310px] gap-6 items-start">
                 {/* LEFT SECTION: Form Inputs */}
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
@@ -926,54 +930,44 @@ export const CreateBarcodeModal: React.FC<CreateBarcodeModalProps> = ({
                 </div>
 
                 {/* RIGHT SECTION: Live Sticker Preview dynamically adapting to selected size */}
-                <div className="flex flex-col items-center">
-                  <div className="w-full flex items-center justify-between mb-1.5">
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-[11px] font-black uppercase tracking-wider text-gray-700">
-                        Live Preview
-                      </span>
-                      <span className="px-2 py-0.5 rounded-full text-[9px] font-black bg-[#0A0A0A] text-[#D4AF37]">
-                        {currentSizeConfig.name}
-                      </span>
-                    </div>
-                    <span className="text-[10px] font-bold text-gray-500">
+                <div className="flex flex-col items-center w-full">
+                  <div className="w-full flex items-center justify-between mb-2 px-0.5">
+                    <span className="text-xs font-black uppercase tracking-wider text-gray-800">
+                      Live Preview
+                    </span>
+                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-[#0A0A0A] text-[#D4AF37] tracking-wide shrink-0">
                       {currentSizeConfig.widthMm} × {currentSizeConfig.heightMm} mm
                     </span>
                   </div>
 
                   {/* Canvas backing representing paper roll / sheet */}
-                  <div className="w-full rounded-2xl bg-[#F4F5F7] border border-gray-300 p-3 shadow-inner flex flex-col items-center justify-center relative min-h-[220px] overflow-hidden">
+                  <div className="w-full rounded-2xl bg-[#F4F5F7] border border-gray-300 p-3.5 shadow-inner flex flex-col items-center justify-center relative min-h-[220px] overflow-hidden">
                     {(() => {
-                      const previewScale = Math.min(220 / currentSizeConfig.widthMm, 150 / currentSizeConfig.heightMm)
-                      const previewWidthPx = Math.max(130, Math.round(currentSizeConfig.widthMm * previewScale))
-                      const previewHeightPx = Math.max(85, Math.round(currentSizeConfig.heightMm * previewScale))
-                      const previewBarcodeHeightPx = Math.max(22, Math.round(previewHeightPx * 0.48))
+                      const previewScale = Math.min(230 / currentSizeConfig.widthMm, 150 / currentSizeConfig.heightMm)
+                      const previewWidthPx = Math.max(140, Math.round(currentSizeConfig.widthMm * previewScale))
+                      const previewHeightPx = Math.max(90, Math.round(currentSizeConfig.heightMm * previewScale))
+                      const previewBarcodeHeightPx = Math.max(26, Math.round(previewHeightPx * 0.46))
 
                       return (
                         <div
-                          className="bg-white border border-gray-300 rounded-xl p-2 shadow-sm flex flex-col justify-between items-center text-center relative transition-all"
+                          className="bg-white border border-gray-300 rounded-xl p-2.5 shadow-sm flex flex-col justify-between items-center text-center relative transition-all"
                           style={{
                             width: `${previewWidthPx}px`,
                             height: `${previewHeightPx}px`,
                             boxSizing: 'border-box',
                           }}
                         >
-                          {/* Corner dimension tag */}
-                          <span className="absolute top-1 right-1.5 text-[7.5px] font-bold text-gray-400 select-none">
-                            {currentSizeConfig.widthMm}×{currentSizeConfig.heightMm}mm
-                          </span>
-
                           {/* Company / Brand */}
                           {settings.showCompanyName && (
                             <span
-                              className="font-black uppercase tracking-wider text-gray-900 leading-none truncate max-w-[80%]"
-                              style={{ fontSize: `${Math.max(7.5, Math.round(previewHeightPx * 0.09))}px` }}
+                              className="font-black uppercase tracking-wider text-gray-900 leading-none truncate max-w-[78%]"
+                              style={{ fontSize: `${Math.max(8, Math.round(previewHeightPx * 0.085))}px` }}
                             >
                               {header || BRAND_EN}
                             </span>
                           )}
 
-                          {/* Barcode Graphic Box (takes ~48% height) */}
+                          {/* Barcode Graphic Box (takes ~46% height) */}
                           <div
                             className="w-full flex items-center justify-center overflow-hidden my-0.5"
                             style={{ height: `${previewBarcodeHeightPx}px` }}
@@ -984,7 +978,7 @@ export const CreateBarcodeModal: React.FC<CreateBarcodeModalProps> = ({
                           {/* Barcode number text */}
                           <span
                             className="font-mono font-bold text-gray-800 tracking-wider leading-none"
-                            style={{ fontSize: `${Math.max(7, Math.round(previewHeightPx * 0.075))}px` }}
+                            style={{ fontSize: `${Math.max(7.5, Math.round(previewHeightPx * 0.075))}px` }}
                           >
                             {itemCode || 'CLAD0000000'}
                           </span>
@@ -993,7 +987,7 @@ export const CreateBarcodeModal: React.FC<CreateBarcodeModalProps> = ({
                           {settings.showItemName && (
                             <span
                               className="font-bold text-gray-800 truncate max-w-full leading-tight"
-                              style={{ fontSize: `${Math.max(7, Math.round(previewHeightPx * 0.075))}px` }}
+                              style={{ fontSize: `${Math.max(7.5, Math.round(previewHeightPx * 0.075))}px` }}
                             >
                               {line1 || selectedProduct?.name || 'Item Name'}
                             </span>
@@ -1003,7 +997,7 @@ export const CreateBarcodeModal: React.FC<CreateBarcodeModalProps> = ({
                           {line2 && (
                             <span
                               className="font-semibold text-gray-600 truncate max-w-full leading-tight"
-                              style={{ fontSize: `${Math.max(6.5, Math.round(previewHeightPx * 0.07))}px` }}
+                              style={{ fontSize: `${Math.max(7, Math.round(previewHeightPx * 0.07))}px` }}
                             >
                               {line2}
                             </span>
@@ -1013,9 +1007,9 @@ export const CreateBarcodeModal: React.FC<CreateBarcodeModalProps> = ({
                           {settings.showSalePrice && (
                             <span
                               className="font-black text-black truncate max-w-full leading-none"
-                              style={{ fontSize: `${Math.max(8, Math.round(previewHeightPx * 0.095))}px` }}
+                              style={{ fontSize: `${Math.max(8.5, Math.round(previewHeightPx * 0.095))}px` }}
                             >
-                              {line3 || 'Price: ₹0'}
+                              {line3 || (settings.showDiscount ? 'Discount: 0%' : 'Price: ₹0')}
                             </span>
                           )}
 
@@ -1023,7 +1017,7 @@ export const CreateBarcodeModal: React.FC<CreateBarcodeModalProps> = ({
                           {line4 && (
                             <span
                               className="text-gray-500 truncate max-w-full leading-none"
-                              style={{ fontSize: `${Math.max(6, Math.round(previewHeightPx * 0.065))}px` }}
+                              style={{ fontSize: `${Math.max(6.5, Math.round(previewHeightPx * 0.065))}px` }}
                             >
                               {line4}
                             </span>
@@ -1032,9 +1026,9 @@ export const CreateBarcodeModal: React.FC<CreateBarcodeModalProps> = ({
                       )
                     })()}
 
-                    <div className="mt-2 text-[10px] font-bold text-gray-500">
+                    <div className="mt-2.5 text-[10px] font-bold text-gray-500 text-center">
                       {settings.printerType === 'label'
-                        ? `Thermal Roll • 1 barcode per page (${currentSizeConfig.widthMm} × ${currentSizeConfig.heightMm} mm)`
+                        ? `Thermal Roll • 1 barcode per page (${currentSizeConfig.name})`
                         : 'Regular Printer (A4 Sheet Layout)'}
                     </div>
                   </div>

@@ -98,32 +98,27 @@ export const BarcodeSheetPreviewModal: React.FC<BarcodeSheetPreviewModalProps> =
         >
           <div className="flex flex-wrap items-center justify-center gap-4 w-full">
             {individualLabels.map((label, idx) => (
-              <div
-                key={`${label.id}-${idx}`}
-                className="bg-white rounded-xl border border-gray-300 p-2.5 shadow-sm flex flex-col justify-between items-center text-center relative transition-all"
-                style={{
-                  width: `${cardWidthPx}px`,
-                  height: `${cardHeightPx}px`,
-                  boxSizing: 'border-box',
-                }}
-              >
-                {/* Page indicator & dimension badge */}
-                <div className="w-full flex items-center justify-between text-[7.5px] font-bold text-gray-400 select-none px-0.5 leading-none mb-1">
-                  <span className="bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded font-mono font-bold">
-                    Page {idx + 1}
-                  </span>
-                  <span>{sizeConfig.widthMm}×{sizeConfig.heightMm}mm</span>
-                </div>
-
-                {/* Header */}
-                {label.header && (
-                  <span
-                    className="font-black uppercase tracking-wider text-gray-900 leading-none truncate max-w-[90%]"
-                    style={{ fontSize: `${Math.max(7.5, Math.round(cardHeightPx * 0.09))}px` }}
-                  >
-                    {label.header}
-                  </span>
-                )}
+              <div key={`${label.id}-${idx}`} className="flex flex-col items-center">
+                <span className="text-[10px] font-bold text-gray-500 mb-1.5 font-mono">
+                  Page {idx + 1}
+                </span>
+                <div
+                  className="bg-white rounded-xl border border-gray-300 p-2.5 shadow-sm flex flex-col justify-between items-center text-center relative transition-all"
+                  style={{
+                    width: `${cardWidthPx}px`,
+                    height: `${cardHeightPx}px`,
+                    boxSizing: 'border-box',
+                  }}
+                >
+                  {/* Header */}
+                  {label.header && (
+                    <span
+                      className="font-black uppercase tracking-wider text-gray-900 leading-none truncate max-w-[90%]"
+                      style={{ fontSize: `${Math.max(7.5, Math.round(cardHeightPx * 0.09))}px` }}
+                    >
+                      {label.header}
+                    </span>
+                  )}
 
                 {/* Barcode Graphic Box (occupies ~48% height) */}
                 <div
@@ -178,7 +173,8 @@ export const BarcodeSheetPreviewModal: React.FC<BarcodeSheetPreviewModalProps> =
                   </span>
                 )}
               </div>
-            ))}
+            </div>
+          ))}
           </div>
         </div>
 

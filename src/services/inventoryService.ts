@@ -362,10 +362,11 @@ export const inventoryService = {
       throw catErr
     }
 
-    // Get count of products per category
+    // Get count of active products per category
     const { data: products, error: prodErr } = await supabase
       .from('products')
       .select('category_id')
+      .neq('is_active', false)
 
     const countMap: Record<number, number> = {}
     if (!prodErr && products) {

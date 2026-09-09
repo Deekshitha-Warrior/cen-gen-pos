@@ -48,7 +48,7 @@ export const AddEditProductView: React.FC<{ onStockUpdated?: () => void }> = ({ 
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
   useEffect(() => {
-    void fetchProducts()
+    void fetchProducts(true)
     inventoryService.fetchCategories().then(setCategories).catch(console.error)
   }, [fetchProducts])
 
@@ -508,7 +508,7 @@ export const AddEditProductView: React.FC<{ onStockUpdated?: () => void }> = ({ 
         }
       }
 
-      await fetchProducts()
+      await fetchProducts(true)
       onStockUpdated?.()
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'An error occurred while saving'
@@ -518,7 +518,16 @@ export const AddEditProductView: React.FC<{ onStockUpdated?: () => void }> = ({ 
     }
   }
 
-  const filteredProducts = products.filter((p) =>
+  // Only active products in the authoring catalog
+  const activeProducts = products.filter((p) => p.isActive !== false)
+
+  useEffect(() => {
+    if (selectedProductId && !activeProducts.some((p) => Number(p.id) === selectedProductId)) {
+      resetForm()
+    }
+  }, [activeProducts, selectedProductId])
+
+  const filteredProducts = activeProducts.filter((p) =>
     p.name.toLowerCase().includes(search.toLowerCase()) ||
     (p.category && p.category.toLowerCase().includes(search.toLowerCase())) ||
     (p.barcode && p.barcode.toLowerCase().includes(search.toLowerCase()))
@@ -530,7 +539,7 @@ export const AddEditProductView: React.FC<{ onStockUpdated?: () => void }> = ({ 
       <div className="w-full lg:w-80 xl:w-96 flex flex-col bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm shrink-0 h-full min-h-0">
         <div className="p-3.5 border-b border-gray-200 bg-[#FAFAFA] flex items-center justify-between shrink-0">
           <h4 className="text-xs font-bold text-gray-800">
-            Product Catalog ({products.length})
+            Product Catalog ({activeProducts.length})
           </h4>
         </div>
 

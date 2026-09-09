@@ -50,7 +50,7 @@ export const InventoryTable: React.FC = () => {
   const loadData = useCallback(async () => {
     setLoading(true)
     try {
-      void fetchProducts()
+      void fetchProducts(true)
       const data = await inventoryService.fetchInventoryItems()
       setItems(data)
     } catch (err) {
@@ -124,7 +124,7 @@ export const InventoryTable: React.FC = () => {
   const distinctProducts: ProductOptionType[] = Array.from(
     new Map<number, ProductOptionType>([
       ...storeProducts
-        .filter((p) => p.category?.trim().toLowerCase() !== 'unregistered')
+        .filter((p) => p.isActive !== false && p.category?.trim().toLowerCase() !== 'unregistered')
         .map(
           (p): [number, ProductOptionType] => [
             Number(p.id),
