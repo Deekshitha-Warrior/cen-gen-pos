@@ -59,7 +59,7 @@ import { useNavigationStore } from '../store/navigationStore'
 import { useHardwareBarcodeScanner } from '../hooks/useHardwareBarcodeScanner'
 import { BarcodeRedirectDialog } from '../components/pos/BarcodeRedirectDialog'
 import { exportAnalyticsToCSV, exportAnalyticsToPDF } from '../services/analyticsExport'
-import { BRAND_EN } from '../lib/brand'
+import { BRAND_EN, BRAND_LOGO } from '../lib/brand'
 import {
   ResponsiveContainer,
   XAxis,
@@ -153,16 +153,16 @@ const exportCSV = (orders: DashboardOrder[]) => {
 }
 
 const UNIT_TYPE_OPTIONS: { value: UnitType; label: string; hint: string }[] = [
-  { value: 'unit',   label: 'Unit (piece)',    hint: 'e.g. Blouse, earrings, perfume' },
-  { value: 'weight', label: 'Weight (g / kg)', hint: 'For weight-based boutique items' },
-  { value: 'volume', label: 'Volume (ml / L)', hint: 'e.g. Perfume or liquid products' },
-  { value: 'bundle', label: 'Bundle / Set',    hint: 'e.g. Pooja kit, Herbal pack' },
+  { value: 'unit',   label: 'Standard Piece (No Size)', hint: 'e.g. Saree, Stole, Dupatta, Accessory' },
+  { value: 'weight', label: 'Alpha Sizes (S, M, L...)', hint: 'Apparel with standard letter sizing (S, M, L, XL, 2XL)' },
+  { value: 'volume', label: 'Numeric Sizes (28, 30...)', hint: 'Waist / chest numeric sizing (28, 30, 32, 34, 36)' },
+  { value: 'bundle', label: 'Bundle / Combo Set',    hint: 'e.g. 3-piece combo, bridal set' },
 ]
 
 const DEFAULT_OPTIONS_FOR_TYPE: Record<UnitType, string> = {
   unit:   '',
-  weight: '100g, 250g, 500g, 1kg',
-  volume: '250ml, 500ml, 1L',
+  weight: 'S, M, L, XL, 2XL',
+  volume: '28, 30, 32, 34, 36, 38',
   bundle: '',
 }
 
@@ -1596,8 +1596,8 @@ export default function Dashboard() {
         {/* Desktop brand header */}
         <div className={`hidden lg:flex items-center relative transition-all duration-300 shrink-0 ${sidebarCollapsed ? 'flex-col items-center pt-4 pb-3 px-2 gap-2' : 'px-4 py-3.5 justify-between border-b border-white/5'}`}>
           <Link to="/pos" title="Go to Billing Panel" className={`flex items-center gap-2.5 min-w-0 transition-all duration-300 ${sidebarCollapsed ? 'justify-center' : 'flex-1'}`}>
-            <div className="flex items-center justify-center shrink-0 w-9 h-9 rounded-xl bg-[#141414] border border-[#D4AF37]/50 shadow-sm hover:scale-105 transition-transform">
-              <span className="font-serif text-[16px] font-black text-[#D4AF37] leading-none">C</span>
+            <div className="flex items-center justify-center shrink-0 w-9 h-9 rounded-xl bg-[#141414] border border-[#D4AF37]/50 shadow-sm hover:scale-105 transition-transform p-0.5 overflow-hidden">
+              <img src={BRAND_LOGO} alt={BRAND_EN} className="w-full h-full object-contain" />
             </div>
             {!sidebarCollapsed && (
               <div className="flex flex-col min-w-0">
@@ -1621,8 +1621,8 @@ export default function Dashboard() {
         {/* Mobile mini-header */}
         <div className="flex lg:hidden items-center justify-between px-3 py-2.5 border-b border-white/10 bg-[#0A0A0A] shrink-0">
           <Link to="/pos" title="Go to Billing Panel" className="flex items-center gap-2.5 min-w-0">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#141414] border border-[#D4AF37]/50 shrink-0 shadow-sm hover:scale-105 transition-transform">
-              <span className="font-serif text-[15px] font-black text-[#D4AF37] leading-none">C</span>
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#141414] border border-[#D4AF37]/50 shrink-0 shadow-sm hover:scale-105 transition-transform p-0.5 overflow-hidden">
+              <img src={BRAND_LOGO} alt={BRAND_EN} className="w-full h-full object-contain" />
             </div>
             <div className="flex items-center gap-2">
               <span className="text-[16px] font-black text-white tracking-wider truncate">{BRAND_EN}</span>
@@ -3594,13 +3594,13 @@ export default function Dashboard() {
                 {(prodForm.unitType === 'weight' || prodForm.unitType === 'volume') && (
                   <div>
                     <label className="block text-[11px] font-black uppercase text-[#6B7280] tracking-wider mb-1">
-                      Size Options (comma-separated)
+                      {prodForm.unitType === 'weight' ? 'Alpha Size Options (S, M, L...)' : 'Numeric Size Options (28, 30, 32...)'}
                     </label>
                     <input className="w-full px-4 py-2.5 bg-[#FAFAFA] border border-[#F3F4F6] focus:border-[#D4AF37] rounded-xl text-[13px] font-bold outline-none transition-colors"
-                      placeholder={prodForm.unitType === 'weight' ? '100g, 250g, 500g, 1kg' : '250ml, 500ml, 1L'}
+                      placeholder={prodForm.unitType === 'weight' ? 'XS, S, M, L, XL, 2XL' : '28, 30, 32, 34, 36, 38'}
                       value={prodForm.predefinedOptionsText}
                       onChange={e => setProdForm(f => ({...f, predefinedOptionsText: e.target.value}))} />
-                    <p className="text-[11px] text-[#6B7280] mt-1">{l('These become the selectable size buttons on the product card.', 'இவை பொருள் அட்டையில் அளவு பொத்தான்களாக காட்டப்படும்.')}</p>
+                    <p className="text-[11px] text-[#6B7280] mt-1">{l('Standard partitioned size options for apparel. Keep letter and numeric sizes separate.', 'நிலையான ஆடை அளவு விருப்பங்கள். எழுத்து மற்றும் எண் அளவுகளை பிரிக்கவும்.')}</p>
                   </div>
                 )}
 

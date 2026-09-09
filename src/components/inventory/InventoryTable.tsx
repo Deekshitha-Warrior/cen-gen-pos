@@ -359,7 +359,7 @@ export const InventoryTable: React.FC = () => {
             </div>
           </div>
 
-          {/* Stock Table */}
+          {/* Stock Table & Mobile Cards */}
           <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm">
             {loading ? (
               <div className="p-16 text-center text-gray-400 font-bold text-xs flex flex-col items-center justify-center">
@@ -371,57 +371,199 @@ export const InventoryTable: React.FC = () => {
                 No inventory items match your search or filter.
               </div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[620px] text-left text-xs">
-                  <thead className="bg-[#FBFAF6] border-b border-gray-200 text-xs font-bold text-gray-700">
-                    <tr>
-                      <th className="p-3.5">Product &amp; Variant SKU</th>
-                      <th className="p-3.5">Barcode</th>
-                      <th className="p-3.5">Category</th>
-                      <th className="p-3.5 text-center">Stock Level</th>
-                      <th className="p-3.5 text-right">Selling Price</th>
-                      <th className="p-3.5 text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {filtered.map((item) => (
-                      <tr key={item.id} className="hover:bg-[#FBFAF6] transition-colors">
-                        {/* Name & Variant */}
-                        <td className="p-3.5">
-                          <div className="font-black text-gray-900 text-xs">
-                            {item.name}
-                          </div>
-                          {item.variant_name ? (
-                            <span className="inline-block mt-0.5 px-2 py-0.5 rounded-md bg-[#FBFAF6] border border-[#E8D399] text-[#0A0A0A] font-bold text-[10px]">
-                              Size: {item.variant_name}
-                            </span>
-                          ) : (
-                            <span className="text-[10px] text-gray-400 font-medium">
-                              Standard Product
-                            </span>
-                          )}
-                        </td>
+              <>
+                {/* DESKTOP / TABLET VIEW (md and up) */}
+                <div className="hidden md:block overflow-x-auto">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead className="bg-[#FBFAF6] border-b border-gray-200 text-xs font-bold text-gray-700 select-none">
+                      <tr>
+                        <th className="py-3.5 px-4 text-left min-w-[220px]">Product &amp; Variant SKU</th>
+                        <th className="py-3.5 px-4 text-left w-[140px]">Barcode</th>
+                        <th className="py-3.5 px-4 text-left w-[130px]">Category</th>
+                        <th className="py-3.5 px-4 text-center w-[130px]">Stock Level</th>
+                        <th className="py-3.5 px-4 text-right w-[130px]">Selling Price</th>
+                        <th className="py-3.5 px-4 text-right w-[180px]">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {filtered.map((item) => (
+                        <tr key={item.id} className="hover:bg-[#FBFAF6] transition-colors">
+                          {/* Name & Variant */}
+                          <td className="py-3.5 px-4 text-left align-middle">
+                            <div className="font-black text-gray-900 text-xs leading-snug">
+                              {item.name}
+                            </div>
+                            {item.variant_name ? (
+                              <span className="inline-block mt-1 px-2 py-0.5 rounded-md bg-[#FBFAF6] border border-[#E8D399] text-[#0A0A0A] font-bold text-[10px]">
+                                Size: {item.variant_name}
+                              </span>
+                            ) : (
+                              <span className="text-[10px] text-gray-400 font-medium">
+                                Standard Product
+                              </span>
+                            )}
+                          </td>
 
-                        {/* Barcode */}
-                        <td className="p-3.5">
+                          {/* Barcode */}
+                          <td className="py-3.5 px-4 text-left align-middle">
+                            {item.barcode ? (
+                              <span className="inline-block font-mono text-xs font-bold text-gray-800 bg-gray-100 px-2 py-1 rounded-md">
+                                {item.barcode}
+                              </span>
+                            ) : (
+                              <span className="text-gray-400 italic text-[11px]">No Barcode</span>
+                            )}
+                          </td>
+
+                          {/* Category */}
+                          <td className="py-3.5 px-4 text-left align-middle text-gray-600 font-semibold">
+                            <span className="inline-block px-2 py-0.5 bg-gray-50 rounded text-gray-700 border border-gray-200 text-[11px]">
+                              {item.category || 'General'}
+                            </span>
+                          </td>
+
+                          {/* Stock */}
+                          <td className="py-3.5 px-4 text-center align-middle">
+                            <span
+                              className={`inline-block px-2.5 py-1 rounded-full text-xs font-black tabular-nums ${
+                                item.stock <= 0
+                                  ? 'bg-red-50 text-red-700 border border-red-200'
+                                  : item.stock <= 5
+                                  ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                                  : 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                              }`}
+                            >
+                              {item.stock} Units
+                            </span>
+                          </td>
+
+                          {/* Price */}
+                          <td className="py-3.5 px-4 text-right align-middle font-black text-xs text-gray-900 tabular-nums">
+                            <div className="inline-flex items-center justify-end gap-1.5 group">
+                              <span>{formatCurrency(item.price)}</span>
+                              {role === 'admin' && (
+                                <button
+                                  type="button"
+                                  onClick={() => setPriceModalItem(item)}
+                                  className="p-1 rounded-md text-gray-400 hover:text-amber-800 hover:bg-amber-100/70 transition-all cursor-pointer"
+                                  title="Quick Edit Price"
+                                >
+                                  <Edit2 size={12} />
+                                </button>
+                              )}
+                            </div>
+                          </td>
+
+                          {/* Actions */}
+                          <td className="py-3.5 px-4 text-right align-middle">
+                            <div className="flex items-center justify-end gap-1.5">
+                              {/* Adjust Stock (Admin Only) */}
+                              {role === 'admin' && (
+                                <button
+                                  type="button"
+                                  onClick={() => setAdjustModalItem(item)}
+                                  className="px-2.5 py-1.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100 text-[11px] font-bold transition-colors cursor-pointer"
+                                  title="Adjust Stock"
+                                >
+                                  <SlidersHorizontal size={13} className="inline mr-1" />
+                                  Adjust
+                                </button>
+                              )}
+
+                              {/* Stock History */}
+                              <button
+                                type="button"
+                                onClick={() => setHistoryDrawerItem(item)}
+                                className="p-1.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100 transition-colors cursor-pointer"
+                                title="Stock History"
+                              >
+                                <History size={14} />
+                              </button>
+
+                              {/* Print Barcode */}
+                              {item.barcode && (
+                                <button
+                                  type="button"
+                                  onClick={() => setPrintModalItem(item)}
+                                  className="p-1.5 rounded-lg bg-[#0A0A0A] text-[#D4AF37] border border-[#D4AF37] hover:bg-[#1A1A1A] transition-colors cursor-pointer"
+                                  title="Print Barcode Labels"
+                                >
+                                  <Printer size={14} />
+                                </button>
+                              )}
+
+                              {/* Delete Product / Variant (Admin Only) */}
+                              {role === 'admin' && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteItem(item)}
+                                  className="p-1.5 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 transition-colors cursor-pointer"
+                                  title={`Delete "${item.variant_name ? `${item.name} (${item.variant_name})` : item.name}"`}
+                                >
+                                  <Trash2 size={14} />
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* MOBILE CARD VIEW (< md screens) */}
+                <div className="block md:hidden divide-y divide-gray-100">
+                  {filtered.map((item) => (
+                    <div key={item.id} className="p-3.5 space-y-2.5 bg-white hover:bg-[#FBFAF6] transition-colors">
+                      {/* Title & Category Row */}
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <h4 className="font-black text-gray-900 text-xs leading-snug">
+                            {item.name}
+                          </h4>
+                          <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                            {item.variant_name && (
+                              <span className="px-2 py-0.5 rounded-md bg-[#FBFAF6] border border-[#E8D399] text-[#0A0A0A] font-bold text-[10px]">
+                                Size: {item.variant_name}
+                              </span>
+                            )}
+                            <span className="px-2 py-0.5 bg-gray-100 rounded text-gray-600 text-[10px] font-semibold">
+                              {item.category || 'General'}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Price badge */}
+                        <div className="text-right shrink-0">
+                          <div className="font-black text-xs text-gray-900 tabular-nums">
+                            {formatCurrency(item.price)}
+                          </div>
+                          {role === 'admin' && (
+                            <button
+                              type="button"
+                              onClick={() => setPriceModalItem(item)}
+                              className="text-[10px] font-bold text-amber-700 hover:underline"
+                            >
+                              Edit Price
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Barcode & Stock Row */}
+                      <div className="flex items-center justify-between gap-2 pt-1 border-t border-gray-100 text-xs">
+                        <div className="text-gray-500 text-[11px]">
                           {item.barcode ? (
-                            <span className="font-mono text-xs font-bold text-gray-800 bg-gray-100 px-2 py-1 rounded-md">
+                            <span className="font-mono font-bold text-gray-800 bg-gray-100 px-1.5 py-0.5 rounded">
                               {item.barcode}
                             </span>
                           ) : (
-                            <span className="text-gray-400 italic">No Barcode</span>
+                            <span className="italic text-gray-400">No Barcode</span>
                           )}
-                        </td>
-
-                        {/* Category */}
-                        <td className="p-3.5 text-gray-600 font-semibold">
-                          {item.category || 'General'}
-                        </td>
-
-                        {/* Stock */}
-                        <td className="p-3.5 text-center">
+                        </div>
+                        <div>
                           <span
-                            className={`inline-block px-2.5 py-1 rounded-full text-xs font-black ${
+                            className={`inline-block px-2.5 py-0.5 rounded-full text-[11px] font-black tabular-nums ${
                               item.stock <= 0
                                 ? 'bg-red-50 text-red-700 border border-red-200'
                                 : item.stock <= 5
@@ -431,81 +573,54 @@ export const InventoryTable: React.FC = () => {
                           >
                             {item.stock} Units
                           </span>
-                        </td>
+                        </div>
+                      </div>
 
-                        {/* Price */}
-                        <td className="p-3.5 text-right font-black text-xs text-gray-900">
-                          <div className="inline-flex items-center justify-end gap-1.5 group">
-                            <span>{formatCurrency(item.price)}</span>
-                            {role === 'admin' && (
-                              <button
-                                type="button"
-                                onClick={() => setPriceModalItem(item)}
-                                className="p-1 rounded-md text-gray-400 hover:text-amber-800 hover:bg-amber-100/70 transition-all cursor-pointer"
-                                title="Quick Edit Price"
-                              >
-                                <Edit2 size={12} />
-                              </button>
-                            )}
-                          </div>
-                        </td>
-
-                        {/* Actions */}
-                        <td className="p-3.5 text-right">
-                          <div className="flex items-center justify-end gap-1.5">
-                            {/* Adjust Stock (Admin Only) */}
-                            {role === 'admin' && (
-                              <button
-                                type="button"
-                                onClick={() => setAdjustModalItem(item)}
-                                className="px-2.5 py-1.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100 text-[11px] font-bold transition-colors cursor-pointer"
-                                title="Adjust Stock"
-                              >
-                                <SlidersHorizontal size={13} className="inline mr-1" />
-                                Adjust
-                              </button>
-                            )}
-
-                            {/* Stock History */}
-                            <button
-                              type="button"
-                              onClick={() => setHistoryDrawerItem(item)}
-                              className="p-1.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100 transition-colors cursor-pointer"
-                              title="Stock History"
-                            >
-                              <History size={14} />
-                            </button>
-
-                            {/* Print Barcode */}
-                            {item.barcode && (
-                              <button
-                                type="button"
-                                onClick={() => setPrintModalItem(item)}
-                                className="p-1.5 rounded-lg bg-[#0A0A0A] text-[#D4AF37] border border-[#D4AF37] hover:bg-[#1A1A1A] transition-colors cursor-pointer"
-                                title="Print Barcode Labels"
-                              >
-                                <Printer size={14} />
-                              </button>
-                            )}
-
-                            {/* Delete Product / Variant (Admin Only) */}
-                            {role === 'admin' && (
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteItem(item)}
-                                className="p-1.5 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 transition-colors cursor-pointer"
-                                title={`Delete "${item.variant_name ? `${item.name} (${item.variant_name})` : item.name}"`}
-                              >
-                                <Trash2 size={14} />
-                              </button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                      {/* Mobile Actions Toolbar */}
+                      <div className="flex items-center justify-end gap-1.5 pt-1.5">
+                        {role === 'admin' && (
+                          <button
+                            type="button"
+                            onClick={() => setAdjustModalItem(item)}
+                            className="flex-1 py-1.5 px-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100 text-[11px] font-bold transition-colors flex items-center justify-center gap-1"
+                          >
+                            <SlidersHorizontal size={12} />
+                            Adjust
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => setHistoryDrawerItem(item)}
+                          className="p-1.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100 transition-colors"
+                          title="Stock History"
+                        >
+                          <History size={14} />
+                        </button>
+                        {item.barcode && (
+                          <button
+                            type="button"
+                            onClick={() => setPrintModalItem(item)}
+                            className="p-1.5 rounded-lg bg-[#0A0A0A] text-[#D4AF37] border border-[#D4AF37] hover:bg-[#1A1A1A] transition-colors"
+                            title="Print Barcode"
+                          >
+                            <Printer size={14} />
+                          </button>
+                        )}
+                        {role === 'admin' && (
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteItem(item)}
+                            className="p-1.5 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 transition-colors"
+                            title="Delete"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
             )}
           </div>
         </div>

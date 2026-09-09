@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { Lock, Eye, EyeOff, AlertCircle, ShieldCheck } from 'lucide-react'
 import { useAdminAuthStore } from '../store/store'
-import { BRAND_EN, BRAND_TA, BRAND_SUBTITLE } from '../lib/brand'
+import { BRAND_EN, BRAND_TA, BRAND_SUBTITLE, BRAND_LOGO } from '../lib/brand'
 import { useLangStore } from '../store/langStore'
 
 export default function AdminLogin() {
@@ -42,7 +42,7 @@ export default function AdminLogin() {
         <div className="hidden flex-col justify-between bg-[#0A0A0A] border-r border-[#D4AF37]/20 p-6 lg:p-8 text-white lg:flex overflow-y-auto hide-scrollbar">
           <div>
             <div className="mb-5 inline-flex items-center gap-2 rounded-2xl bg-[#141414] border border-[#D4AF37]/40 px-3.5 py-2 shadow-xl">
-              <span className="font-serif text-lg font-black text-[#D4AF37] tracking-wider">C</span>
+              <img src={BRAND_LOGO} alt={BRAND_EN} className="w-6 h-6 object-contain" />
               <span className="text-xs font-black tracking-widest text-white uppercase">{BRAND_EN}</span>
             </div>
             <p className="text-[10px] font-black uppercase tracking-[0.26em] text-[#D4AF37]">{BRAND_SUBTITLE}</p>
@@ -54,6 +54,9 @@ export default function AdminLogin() {
         <div className="p-5 sm:p-7 lg:p-8 bg-white text-[#111111] overflow-y-auto hide-scrollbar flex flex-col justify-center">
           {/* Brand */}
           <div className="mb-4 sm:mb-5 flex flex-col items-center text-center lg:items-start lg:text-left">
+            <div className="mb-3 w-12 h-12 rounded-2xl bg-[#0A0A0A] border border-[#D4AF37]/50 p-1 flex items-center justify-center shadow-md">
+              <img src={BRAND_LOGO} alt={BRAND_EN} className="w-full h-full object-contain" />
+            </div>
             <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#B48811]">{BRAND_SUBTITLE}</p>
             <h1 className="mt-1 text-2xl sm:text-3xl font-black tracking-tight text-[#0A0A0A]">{BRAND_EN}</h1>
             <p className="mt-0.5 text-xs font-semibold text-[#7A786F]">{BRAND_TA}</p>

@@ -15,6 +15,7 @@ import {
   BRAND_THIRD_PHONE_DISPLAY,
   BRAND_THIRD_PHONE_E164,
   BRAND_ADDRESS,
+  BRAND_LOGO,
 } from '../lib/brand'
 
 export default function Footer() {
@@ -69,8 +70,10 @@ export default function Footer() {
     <footer className="bg-forestDark text-gray-300 mt-12 sm:mt-16">
       <div className="max-w-7xl mx-auto px-4 py-10 sm:py-14 grid grid-cols-1 md:grid-cols-4 gap-8 sm:gap-10">
         <div className="md:col-span-1">
-          <div className="flex items-center gap-2 mb-4">
-            <div className="w-9 h-9 bg-sageDark rounded-xl flex items-center justify-center"><Leaf size={18} className="text-white" /></div>
+          <div className="flex items-center gap-2.5 mb-4">
+            <div className="w-10 h-10 bg-[#0A0A0A] border border-[#D4AF37]/50 rounded-xl flex items-center justify-center p-1 overflow-hidden shrink-0">
+              <img src={BRAND_LOGO} alt={BRAND_EN} className="w-full h-full object-contain" />
+            </div>
             <div>
               <p className="font-bold text-white text-base sm:text-lg font-headline leading-tight">{BRAND_EN}</p>
               <p className="text-[10px] uppercase tracking-[0.2em] text-sage font-bold">{BRAND_SUBTITLE}</p>

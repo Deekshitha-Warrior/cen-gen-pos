@@ -10,10 +10,7 @@ export default defineConfig({
       registerType: 'autoUpdate',
       injectRegister: 'auto',
       includeAssets: [
-        'favicon.svg',
-        'clad-logo.svg',
-        'clad-logo.jpeg',
-        'product-placeholder.svg',
+        'clad-logo.png',
         'robots.txt',
       ],
       manifest: {
@@ -28,22 +25,16 @@ export default defineConfig({
         scope: '/',
         icons: [
           {
-            src: '/favicon.svg',
-            sizes: 'any',
-            type: 'image/svg+xml',
+            src: '/clad-logo.png',
+            sizes: '192x192',
+            type: 'image/png',
             purpose: 'any',
           },
           {
-            src: '/clad-logo.svg',
-            sizes: 'any',
-            type: 'image/svg+xml',
-            purpose: 'maskable',
-          },
-          {
-            src: '/clad-logo.jpeg',
+            src: '/clad-logo.png',
             sizes: '512x512',
-            type: 'image/jpeg',
-            purpose: 'any',
+            type: 'image/png',
+            purpose: 'maskable',
           },
         ],
       },

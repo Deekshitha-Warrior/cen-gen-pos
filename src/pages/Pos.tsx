@@ -868,7 +868,7 @@ export default function Pos(props: PosProps = {}) {
   // ══ INVOICE SCREEN ════════════════════════════════════════════════════
   if (invoice) {
     const invoiceItems = invoice.items.map(item => ({
-      id: item.id,
+      id: String(item.id),
       name: item.name,
       nameTa: item.nameTa,
       qty: item.qty,
@@ -879,7 +879,7 @@ export default function Pos(props: PosProps = {}) {
       base_price: Number(item.basePrice) || 0,
       line_total: item.lineTotal,
       price: item.price,
-      offerPrice: item.offerPrice,
+      offerPrice: item.offerPrice ?? undefined,
     }))
 
     return (
@@ -889,31 +889,62 @@ export default function Pos(props: PosProps = {}) {
           {/* Header */}
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-xl font-bold text-textMain">{l('Bill Generated', 'பில் உருவாக்கப்பட்டது')}</h1>
-              <p className="text-sm text-textMuted">#{formatInvoiceNo(invoice.invoiceNo)}</p>
+              <h1 className="text-xl font-bold text-textMain">{l('Bill Generated Successfully', 'பில் உருவாக்கப்பட்டது')}</h1>
+              <p className="text-xs text-textMuted mt-0.5">Transaction recorded and inventory updated</p>
             </div>
             <button onClick={clearAll}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[#111111] hover:bg-[#3d4f3a] text-white font-bold text-sm">
+              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[#111111] hover:bg-[#3d4f3a] text-white font-bold text-sm shadow-sm cursor-pointer">
               <Plus size={15} /> New Sale
             </button>
           </div>
 
+          {/* Bill Details Section */}
+          <div className="rounded-2xl border border-[#E8D399] bg-[#FBFAF6] p-4 shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-gray-200">
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">Bill Number:</span>
+                <span className="px-2.5 py-0.5 rounded-lg bg-[#0A0A0A] text-[#D4AF37] font-black text-xs font-mono">
+                  #{formatInvoiceNo(invoice.invoiceNo)}
+                </span>
+              </div>
+              <div className="text-xs font-semibold text-gray-600">
+                {new Date(invoice.date).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}
+              </div>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-2.5 text-xs">
+              <div>
+                <span className="text-[10px] text-gray-400 font-bold uppercase block">Customer</span>
+                <span className="font-bold text-gray-900 truncate block">{invoice.customerName || 'Walk-in Customer'}</span>
+              </div>
+              <div>
+                <span className="text-[10px] text-gray-400 font-bold uppercase block">Payment Mode</span>
+                <span className="font-bold text-gray-900 uppercase block">{invoice.paymentMode || 'POS'}</span>
+              </div>
+              {invoice.phone && (
+                <div>
+                  <span className="text-[10px] text-gray-400 font-bold uppercase block">Phone</span>
+                  <span className="font-semibold text-gray-700 block">{invoice.phone}</span>
+                </div>
+              )}
+            </div>
+          </div>
+
           {/* Payment receipt */}
           <div className="surface-panel p-5 rounded-xl border border-gray-100 bg-white shadow-sm mb-4">
-            <p className="text-xs font-black uppercase tracking-widest text-textMuted mb-3">{l('Payment Receipt', 'பண ரசீது')}</p>
+            <p className="text-xs font-black uppercase tracking-widest text-textMuted mb-3">{l('Financial Summary', 'நிதி சுருக்கம்')}</p>
             <div className="space-y-2.5">
               <div className="flex justify-between items-center pb-2.5 border-b border-gray-100">
                 <p className="text-sm font-bold text-textMuted">{l('Grand Total', 'மொத்த தொகை')}</p>
-                <p className="text-2xl font-black text-textMain">{formatCurrency(invoice.total)}</p>
+                <p className="text-2xl font-black text-textMain tabular-nums">{formatCurrency(invoice.total)}</p>
               </div>
               <div className="flex justify-between items-center">
                 <p className="text-sm font-bold text-textMuted">{l('Amount Received', 'பெற்ற தொகை')}</p>
-                <p className="text-xl font-black text-textMain">{formatCurrency(invoice.amountReceived)}</p>
+                <p className="text-xl font-black text-textMain tabular-nums">{formatCurrency(invoice.amountReceived)}</p>
               </div>
               {invoice.balanceReturned > 0 ? (
                 <div className="flex justify-between items-center rounded-xl bg-blue-50 border border-blue-200 px-4 py-3">
                   <p className="text-sm font-black text-blue-700">{l('Balance Returned', 'திரும்பிய பணம்')}</p>
-                  <p className="text-2xl font-black text-blue-700">{formatCurrency(invoice.balanceReturned)}</p>
+                  <p className="text-2xl font-black text-blue-700 tabular-nums">{formatCurrency(invoice.balanceReturned)}</p>
                 </div>
               ) : (
                 <div className="rounded-xl bg-green-50 border border-green-200 px-4 py-3 text-center">

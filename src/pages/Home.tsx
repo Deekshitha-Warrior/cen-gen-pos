@@ -349,7 +349,7 @@ export default function Home() {
                 src="/Add_shoot_video_202604072031.mp4"
                 className="w-full h-full object-cover"
                 autoPlay muted loop playsInline
-                poster="/clad-logo.jpeg"
+                poster="/clad-logo.png"
               />
               {/* Subtle bottom vignette for depth */}
               <div className="absolute inset-0 bg-gradient-to-t from-[#111111]/10 via-transparent to-transparent pointer-events-none" />

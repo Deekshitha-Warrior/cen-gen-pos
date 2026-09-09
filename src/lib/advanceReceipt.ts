@@ -18,7 +18,7 @@ const pdfMoney = (value: number): string => {
 export function advanceReceiptPdf(order: AdvanceOrder) {
   const doc = new jsPDF({ unit: 'mm', format: 'a4' })
   doc.setFillColor('#0A0A0A'); doc.rect(0, 0, 210, 5, 'F')
-  try { doc.addImage(LOGO_BASE64, 'JPEG', 16, 10, 12, 12) } catch (_err) { /* ignore missing logo */ }
+  try { doc.addImage(LOGO_BASE64, 'PNG', 16, 9, 16, 16) } catch (_err) { /* ignore missing logo */ }
   doc.setTextColor('#111111'); doc.setFont('helvetica', 'bold'); doc.setFontSize(18); doc.text(BRAND_EN.toUpperCase(), 38, 20)
   doc.setTextColor('#6b7280'); doc.setFontSize(8); doc.text('ADVANCE RECEIPT - NOT A TAX INVOICE', 38, 26)
 
@@ -79,6 +79,9 @@ export function printAdvanceReceipt(order: AdvanceOrder) {
   .balance-row { font-size: 14px; font-weight: bold; }
 </style>
 </head><body>
+<div class="c" style="margin-bottom: 6px;">
+  <img src="${LOGO_BASE64}" style="width: 50px; height: 50px; object-fit: contain; margin: 0 auto; display: block;" alt="CLAD Logo" />
+</div>
 <div class="c big">${esc(BRAND_EN)}</div>
 <div class="c" style="font-size:10px;color:#555;">${esc(BRAND_ADDRESS)}</div>
 <div class="c" style="font-size:10px;color:#555;">${esc(BRAND_PHONE_DISPLAY)}</div>

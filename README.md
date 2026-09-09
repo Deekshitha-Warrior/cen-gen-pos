@@ -21,4 +21,4 @@ The app keeps the established dashboard, POS billing, catalog, category, coupon,
 - `VITE_STAFF_ID` (optional; defaults to `VITE_ADMIN_ID`)
 - `VITE_STAFF_PASSWORD`
 
-Brand assets are located in `public/clad-logo.svg` and `public/clad-logo.jpeg`.
+Brand assets are located in `public/clad-logo.png`.

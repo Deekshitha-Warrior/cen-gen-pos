@@ -1,4 +1,5 @@
 import { BRAND_ADDRESS, BRAND_EMAIL, BRAND_EN, BRAND_INSTAGRAM, BRAND_PRIMARY_PHONE_DISPLAY } from './brand'
+import { LOGO_BASE64 } from './logoBase64'
 import { formatCurrency, formatInvoiceNo } from './retail'
 
 export interface ThermalReceiptData {
@@ -80,6 +81,7 @@ export function printThermalReceipt(data: ThermalReceiptData) {
       </head>
       <body>
         <div class="text-center mb-2">
+          <img src="${LOGO_BASE64}" style="width: 48px; height: 48px; object-fit: contain; margin: 0 auto 6px auto; display: block;" alt="CLAD Logo" />
           <div class="font-bold" style="font-size: 16px; letter-spacing: 2px;">${data.storeName || BRAND_EN}</div>
           <div style="font-size: 10px; margin-top: 2px;">${data.storeAddress || BRAND_ADDRESS}</div>
           <div class="mt-1" style="font-size: 10px;">Ph: ${data.storePhone || BRAND_PRIMARY_PHONE_DISPLAY}</div>
