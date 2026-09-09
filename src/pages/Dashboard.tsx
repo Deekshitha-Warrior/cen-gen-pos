@@ -4,7 +4,7 @@ import {
   Box, AlertCircle, ArrowUp, ArrowDown, Power, Download, TrendingUp, TrendingDown,
   Package, Search, RefreshCw, ShieldCheck, ShieldOff, Trophy,
   MessageCircle, ChevronDown, Eye, FileText, Printer, MoreVertical, X, Layers, Receipt,
-  SlidersHorizontal,
+  SlidersHorizontal, Tag, Ticket, Percent, CheckCircle2, Info, Sparkles,
 } from 'lucide-react'
 
 // Custom Malaysian Ringgit icon — replaces the generic dollar-sign icon
@@ -3944,174 +3944,240 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* ── COUPONS TAB ── */}
-        {/* ── COUPONS TAB ── */}
+        {/* ——— COUPON MANAGEMENT (BLACK & GOLD PREMIUM THEME) ——— */}
         {tab === 'coupons' && (
-          <div className="space-y-4">
-            <div className="flex flex-col gap-3">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="space-y-1">
-                  <h2 className="text-[22px] lg:text-[24px] leading-none font-black text-[#111111]">{l('Coupon Management', 'கூப்பன் மேலாண்மை')}</h2>
-                  <p className="max-w-2xl text-[12px] lg:text-[12px] font-medium text-[#6C665C]">
-                    {l('Create and manage discount codes. Applies to product subtotal only.', 'பொருட்களின் subtotal-க்கு மட்டும் கூப்பன் தள்ளுபடி பொருந்தும்.')}
+          <div className="space-y-6">
+            {/* Header with Title & Refresh Action */}
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div>
+                <h2 className="text-[24px] font-black text-[#111111] tracking-tight">{l('Coupon Management', 'கூப்பன் மேலாண்மை')}</h2>
+                <p className="text-[13px] text-[#6B7280]">
+                  {l('Create and manage discount codes. Applies to product subtotal only.', 'பொருட்களின் subtotal-க்கு மட்டும் கூப்பன் தள்ளுபடி பொருந்தும்.')}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => void loadCoupons()}
+                className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-white border border-[#E8D399] text-[#0A0A0A] font-bold text-xs hover:bg-[#FBFAF6] shadow-xs transition-all cursor-pointer hover:scale-[1.02]"
+                title="Refresh coupons list"
+              >
+                <RefreshCw size={14} className="text-[#B48811]" />
+                <span>{l('Refresh', 'புதுப்பி')}</span>
+              </button>
+            </div>
+
+            {/* Stat Cards matching POS Analytics */}
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              {/* Card 1: Total Coupons */}
+              <div className="bg-white rounded-card border border-borderLight p-5 shadow-soft flex flex-col justify-between hover:shadow-md transition-shadow">
+                <div>
+                  <div className="flex items-start justify-between gap-2 mb-3">
+                    <p className="text-[11px] font-bold text-[#111111] uppercase tracking-wider">Total Coupons</p>
+                    <div className="w-8 h-8 rounded-full bg-[#FBFAF6] border border-[#E8D399] flex items-center justify-center text-[#B48811] shrink-0">
+                      <Tag size={15} />
+                    </div>
+                  </div>
+                  <p className="text-[24px] font-black leading-tight text-[#111111] mb-1">
+                    {coupons.length}
                   </p>
                 </div>
-                <button
-                  onClick={() => void loadCoupons()}
-                  className="inline-flex items-center gap-2 rounded-full border border-[#E5E7EB] bg-[#FBFAF6] px-3 py-2 text-[11px] font-black text-[#D4AF37] shadow-sm transition-colors hover:bg-[#F7F1E7]"
-                >
-                  <RefreshCw size={12} />
-                  Refresh
-                </button>
+                <p className="text-[12px] text-[#6B7280] leading-snug">Configured promotional codes</p>
               </div>
 
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                <div className="rounded-xl border border-[#E5E7EB] bg-[#FBFAF6] px-3 py-3 shadow-sm">
-                  <p className="text-[10px] font-black uppercase tracking-[0.15em] text-[#D4AF37]">Total Coupons</p>
-                  <p className="mt-1 text-[20px] font-black text-[#111111]">{coupons.length}</p>
+              {/* Card 2: Active Coupons */}
+              <div className="bg-white rounded-card border border-borderLight p-5 shadow-soft flex flex-col justify-between hover:shadow-md transition-shadow">
+                <div>
+                  <div className="flex items-start justify-between gap-2 mb-3">
+                    <p className="text-[11px] font-bold text-[#111111] uppercase tracking-wider">Active Coupons</p>
+                    <div className="w-8 h-8 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
+                      <CheckCircle2 size={15} />
+                    </div>
+                  </div>
+                  <p className="text-[24px] font-black leading-tight text-emerald-600 mb-1">
+                    {coupons.filter(c => c.is_active).length}
+                  </p>
                 </div>
-                <div className="rounded-xl border border-[#E5E7EB] bg-[#FBFAF6] px-3 py-3 shadow-sm">
-                  <p className="text-[10px] font-black uppercase tracking-[0.15em] text-[#D4AF37]">Active</p>
-                  <p className="mt-1 text-[20px] font-black text-[#D4AF37]">{coupons.filter(c => c.is_active).length}</p>
-                </div>
-                <div className="rounded-xl border border-[#E5E7EB] bg-[#FBFAF6] px-3 py-3 shadow-sm">
-                  <p className="text-[10px] font-black uppercase tracking-[0.15em] text-[#D4AF37]">Used</p>
-                  <p className="mt-1 text-[20px] font-black text-[#111111]">{coupons.reduce((acc, c) => acc + (c.usage_count || 0), 0)}</p>
-                </div>
+                <p className="text-[12px] text-[#6B7280] leading-snug">Live & ready at POS checkout</p>
               </div>
 
-              <div className="rounded-xl border border-[#E7CFAA] bg-[#FFF6E7] px-3 py-2 text-[11px] font-bold text-[#D4AF37] shadow-sm">
-                {l('Coupon discount applies to product subtotal only - not delivery charge.', 'கூப்பன் தள்ளுபடி பொருட்களின் subtotal-க்கு மட்டும் பொருந்தும்.')}
+              {/* Card 3: Total Used */}
+              <div className="bg-white rounded-card border border-borderLight p-5 shadow-soft flex flex-col justify-between hover:shadow-md transition-shadow">
+                <div>
+                  <div className="flex items-start justify-between gap-2 mb-3">
+                    <p className="text-[11px] font-bold text-[#111111] uppercase tracking-wider">Total Redemptions</p>
+                    <div className="w-8 h-8 rounded-full bg-[#0A0A0A] text-[#D4AF37] border border-[#D4AF37]/40 flex items-center justify-center shrink-0">
+                      <Percent size={15} />
+                    </div>
+                  </div>
+                  <p className="text-[24px] font-black leading-tight text-[#111111] mb-1">
+                    {coupons.reduce((acc, c) => acc + (c.usage_count || 0), 0)}
+                  </p>
+                </div>
+                <p className="text-[12px] text-[#6B7280] leading-snug">Total customer discount usages</p>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 gap-4 xl:grid-cols-[380px_minmax(0,1fr)]">
-              <form onSubmit={saveCoupon} className="rounded-2xl border border-[#E5E7EB] bg-[#FFFCF6] p-4 shadow-sm space-y-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-[10px] font-black uppercase tracking-[0.15em] text-[#D4AF37]">{editingCouponId !== null ? 'Edit mode' : 'New coupon'}</p>
-                    <h3 className="mt-1 text-[17px] font-black text-[#111111]">
-                      {editingCouponId !== null ? l('Edit Coupon', 'கூப்பனை திருத்து') : l('Create Coupon', 'புதிய கூப்பன்')}
-                    </h3>
-                  </div>
-                  {editingCouponId !== null && (
-                    <button
-                      type="button"
-                      onClick={cancelEditCoupon}
-                      className="rounded-full border border-[#E7CFAA] bg-[#FFF6E7] px-2.5 py-1 text-[11px] font-black text-[#D4AF37] transition-colors hover:bg-[#FBEBD3]"
-                    >
-                      Cancel
-                    </button>
-                  )}
-                </div>
+            {/* Subtotal notice banner */}
+            <div className="rounded-xl border border-[#E8D399]/60 bg-[#FBFAF6] px-4 py-2.5 text-[12px] font-medium text-[#6C665C] flex items-center gap-2.5 shadow-xs">
+              <Info size={16} className="text-[#B48811] shrink-0" />
+              <span>{l('Coupon discount applies to product subtotal only — delivery charges are excluded.', 'கூப்பன் தள்ளுபடி பொருட்களின் subtotal-க்கு மட்டும் பொருந்தும்.')}</span>
+            </div>
 
-                {couponSaveError && (
-                  <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-[12px] font-bold text-red-700">
-                    {couponSaveError}
-                  </div>
-                )}
-                {couponSaveSuccess && (
-                  <div className="rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-[12px] font-bold text-green-700">
-                    {couponSaveSuccess}
-                  </div>
-                )}
-
-                <div className="space-y-1.5">
-                  <label className="block text-[10px] font-black uppercase tracking-[0.15em] text-[#6B7280]">{l('Coupon Code', 'கூப்பன் குறியீடு')} *</label>
-                  <div className="flex gap-2">
-                    <input
-                      className="flex-1 rounded-xl border border-[#A7F3D0] bg-white px-3 py-2.5 text-[12px] font-black uppercase tracking-[0.12em] text-[#111111] outline-none transition-colors focus:border-[#D4AF37]"
-                      placeholder="WELCOME10"
-                      value={couponForm.code}
-                      disabled={editingCouponId !== null}
-                      onChange={e => { setCouponForm(f => ({ ...f, code: e.target.value.toUpperCase() })); setCouponSaveError(''); setCouponSaveSuccess('') }}
-                    />
-                    {editingCouponId === null && (
+            {/* Main Form & Catalog Columns */}
+            <div className="grid grid-cols-1 gap-6 xl:grid-cols-[400px_minmax(0,1fr)]">
+              {/* Form Card */}
+              <form onSubmit={saveCoupon} className="bg-white rounded-card border border-borderLight p-6 shadow-soft space-y-4 flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between gap-3 mb-4 pb-3 border-b border-gray-100">
+                    <div>
+                      <span className="px-2.5 py-0.5 rounded-full bg-[#0A0A0A] text-[#D4AF37] border border-[#D4AF37]/30 text-[10px] font-black uppercase tracking-wider">
+                        {editingCouponId !== null ? 'EDIT MODE' : 'NEW COUPON'}
+                      </span>
+                      <h3 className="mt-1.5 text-[18px] font-black text-[#111111]">
+                        {editingCouponId !== null ? l('Edit Coupon', 'கூப்பனை திருத்து') : l('Create Coupon', 'புதிய கூப்பன்')}
+                      </h3>
+                    </div>
+                    {editingCouponId !== null && (
                       <button
                         type="button"
-                        onClick={generateCouponCode}
-                        className="shrink-0 rounded-xl border border-[#D4AF37] bg-[#D4AF37] px-3 py-2.5 text-[11px] font-black text-white transition-colors hover:bg-[#741D2A]"
+                        onClick={cancelEditCoupon}
+                        className="px-3 py-1 rounded-full border border-gray-300 text-xs font-bold text-gray-700 hover:bg-gray-100 transition-colors cursor-pointer"
                       >
-                        Generate
+                        Cancel
                       </button>
                     )}
                   </div>
-                  {editingCouponId !== null && (
-                    <p className="text-[10px] font-medium text-[#6B7280]">{l('Code cannot be changed when editing', 'திருத்தும்போது குறியீட்டை மாற்ற முடியாது')}</p>
+
+                  {couponSaveError && (
+                    <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-3.5 py-2 text-[12px] font-bold text-red-700">
+                      {couponSaveError}
+                    </div>
                   )}
+                  {couponSaveSuccess && (
+                    <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-3.5 py-2 text-[12px] font-bold text-emerald-700">
+                      {couponSaveSuccess}
+                    </div>
+                  )}
+
+                  <div className="space-y-4">
+                    {/* Code */}
+                    <div className="space-y-1.5">
+                      <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-700">
+                        {l('Coupon Code', 'கூப்பன் குறியீடு')} <span className="text-red-500">*</span>
+                      </label>
+                      <div className="flex gap-2">
+                        <input
+                          className="flex-1 rounded-xl border border-gray-300 bg-[#FAFAFA] px-3.5 py-2.5 text-[13px] font-mono font-black uppercase tracking-wider text-[#111111] outline-none transition-all focus:border-[#0A0A0A] focus:bg-white focus:ring-1 focus:ring-[#0A0A0A] disabled:opacity-60"
+                          placeholder="WELCOME10"
+                          value={couponForm.code}
+                          disabled={editingCouponId !== null}
+                          onChange={e => { setCouponForm(f => ({ ...f, code: e.target.value.toUpperCase() })); setCouponSaveError(''); setCouponSaveSuccess('') }}
+                        />
+                        {editingCouponId === null && (
+                          <button
+                            type="button"
+                            onClick={generateCouponCode}
+                            className="inline-flex items-center gap-1.5 shrink-0 rounded-xl bg-[#0A0A0A] border border-[#D4AF37] text-[#D4AF37] px-4 py-2.5 text-xs font-black uppercase tracking-wider hover:bg-[#1A1A1A] shadow-xs transition-all cursor-pointer hover:scale-[1.02]"
+                          >
+                            <Sparkles size={13} className="text-[#D4AF37]" />
+                            <span>Generate</span>
+                          </button>
+                        )}
+                      </div>
+                      {editingCouponId !== null && (
+                        <p className="text-[10px] font-medium text-[#6B7280]">{l('Code cannot be changed when editing', 'திருத்தும்போது குறியீட்டை மாற்ற முடியாது')}</p>
+                      )}
+                    </div>
+
+                    {/* Discount & Min Order */}
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <div className="space-y-1.5">
+                        <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-700">
+                          {l('Discount %', 'தள்ளுபடி %')} <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          type="number"
+                          min="1"
+                          max="100"
+                          className="w-full rounded-xl border border-gray-300 bg-[#FAFAFA] px-3.5 py-2.5 text-[13px] font-bold text-[#111111] outline-none transition-all focus:border-[#0A0A0A] focus:bg-white focus:ring-1 focus:ring-[#0A0A0A]"
+                          placeholder="10"
+                          value={couponForm.percentage}
+                          onChange={e => setCouponForm(f => ({ ...f, percentage: Number(e.target.value) }))}
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-700">
+                          {l('Min Order (INR)', 'குறைந்த ஆர்டர் (INR)')}
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          className="w-full rounded-xl border border-gray-300 bg-[#FAFAFA] px-3.5 py-2.5 text-[13px] font-bold text-[#111111] outline-none transition-all focus:border-[#0A0A0A] focus:bg-white focus:ring-1 focus:ring-[#0A0A0A]"
+                          placeholder="0 = no minimum"
+                          value={couponForm.min_order_value}
+                          onChange={e => setCouponForm(f => ({ ...f, min_order_value: e.target.value }))}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Expiry & Usage Limit */}
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <div className="space-y-1.5">
+                        <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-700">
+                          {l('Expiry Date', 'காலாவதி தேதி')}
+                        </label>
+                        <input
+                          type="date"
+                          className="w-full rounded-xl border border-gray-300 bg-[#FAFAFA] px-3.5 py-2.5 text-[13px] font-bold text-[#111111] outline-none transition-all focus:border-[#0A0A0A] focus:bg-white focus:ring-1 focus:ring-[#0A0A0A]"
+                          value={couponForm.expiry_date}
+                          onChange={e => setCouponForm(f => ({ ...f, expiry_date: e.target.value }))}
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-700">
+                          {l('Usage Limit', 'பயன்பாட்டு வரம்பு')}
+                        </label>
+                        <input
+                          type="number"
+                          min="1"
+                          className="w-full rounded-xl border border-gray-300 bg-[#FAFAFA] px-3.5 py-2.5 text-[13px] font-bold text-[#111111] outline-none transition-all focus:border-[#0A0A0A] focus:bg-white focus:ring-1 focus:ring-[#0A0A0A]"
+                          placeholder="Unlimited"
+                          value={couponForm.usage_limit}
+                          onChange={e => setCouponForm(f => ({ ...f, usage_limit: e.target.value }))}
+                        />
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <div className="space-y-1.5">
-                    <label className="block text-[10px] font-black uppercase tracking-[0.15em] text-[#6B7280]">{l('Discount %', 'தள்ளுபடி %')} *</label>
-                    <input
-                      type="number"
-                      min="1"
-                      max="100"
-                      className="w-full rounded-xl border border-[#A7F3D0] bg-white px-3 py-2.5 text-[12px] font-bold text-[#111111] outline-none transition-colors focus:border-[#D4AF37]"
-                      placeholder="10"
-                      value={couponForm.percentage}
-                      onChange={e => setCouponForm(f => ({ ...f, percentage: Number(e.target.value) }))}
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="block text-[10px] font-black uppercase tracking-[0.15em] text-[#6B7280]">{l('Min Order (INR)', 'குறைந்த ஆர்டர் (INR)')}</label>
-                    <input
-                      type="number"
-                      min="0"
-                      className="w-full rounded-xl border border-[#A7F3D0] bg-white px-3 py-2.5 text-[12px] font-bold text-[#111111] outline-none transition-colors focus:border-[#D4AF37]"
-                      placeholder="0 = no minimum"
-                      value={couponForm.min_order_value}
-                      onChange={e => setCouponForm(f => ({ ...f, min_order_value: e.target.value }))}
-                    />
-                  </div>
+                <div className="pt-2">
+                  <button
+                    type="submit"
+                    className="w-full rounded-xl bg-[#0A0A0A] border border-[#D4AF37] text-[#D4AF37] py-3 text-[13px] font-black uppercase tracking-wider shadow-md hover:bg-[#1A1A1A] hover:scale-[1.01] active:scale-[0.99] transition-all cursor-pointer flex items-center justify-center gap-2"
+                  >
+                    <Ticket size={15} className="text-[#D4AF37]" />
+                    <span>{editingCouponId !== null ? l('Update Coupon', 'கூப்பனை புதுப்பி') : l('Create Coupon', 'கூப்பனை உருவாக்கு')}</span>
+                  </button>
                 </div>
-
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <div className="space-y-1.5">
-                    <label className="block text-[10px] font-black uppercase tracking-[0.15em] text-[#6B7280]">{l('Expiry Date', 'காலாவதி தேதி')}</label>
-                    <input
-                      type="date"
-                      className="w-full rounded-xl border border-[#A7F3D0] bg-white px-3 py-2.5 text-[12px] font-bold text-[#111111] outline-none transition-colors focus:border-[#D4AF37]"
-                      value={couponForm.expiry_date}
-                      onChange={e => setCouponForm(f => ({ ...f, expiry_date: e.target.value }))}
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="block text-[10px] font-black uppercase tracking-[0.15em] text-[#6B7280]">{l('Usage Limit', 'பயன்பாட்டு வரம்பு')}</label>
-                    <input
-                      type="number"
-                      min="1"
-                      className="w-full rounded-xl border border-[#A7F3D0] bg-white px-3 py-2.5 text-[12px] font-bold text-[#111111] outline-none transition-colors focus:border-[#D4AF37]"
-                      placeholder="Unlimited"
-                      value={couponForm.usage_limit}
-                      onChange={e => setCouponForm(f => ({ ...f, usage_limit: e.target.value }))}
-                    />
-                  </div>
-                </div>
-
-                <button
-                  type="submit"
-                  className="w-full rounded-xl bg-[#D4AF37] py-3 text-[13px] font-black text-white shadow-sm transition-colors hover:bg-[#741D2A]"
-                >
-                  {editingCouponId !== null ? l('Update Coupon', 'கூப்பனை புதுப்பி') : l('Create Coupon', 'கூப்பனை உருவாக்கு')}
-                </button>
               </form>
 
-              <div className="rounded-2xl border border-[#E5E7EB] bg-[#FFFCF6] p-4 shadow-sm">
-                <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-                  <div>
-                    <p className="text-[10px] font-black uppercase tracking-[0.15em] text-[#6B7280]">{l('Coupon List', 'கூப்பன் பட்டியல்')}</p>
-                    <h3 className="mt-1 text-[17px] font-black text-[#111111]">
-                      {l('All Coupons', 'அனைத்து கூப்பன்கள்')} <span className="text-[#6B7280]">({coupons.length})</span>
+              {/* Coupons List Card */}
+              <div className="bg-white rounded-card border border-borderLight p-6 shadow-soft flex flex-col">
+                <div className="mb-4 flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-gray-100">
+                  <div className="flex items-center gap-2.5">
+                    <h3 className="text-[18px] font-black text-[#111111]">
+                      {l('All Coupons', 'அனைத்து கூப்பன்கள்')}
                     </h3>
+                    <span className="px-2.5 py-0.5 rounded-full bg-[#0A0A0A] text-white text-[11px] font-black">
+                      {coupons.length}
+                    </span>
                   </div>
-                  <span className="rounded-full border border-[#E7CFAA] bg-[#FFF6E7] px-2.5 py-0.5 text-[10px] font-black uppercase tracking-[0.15em] text-[#D4AF37]">
-                    {l('Admin only', 'அட்மின் மட்டும்')}
+                  <span className="px-2.5 py-0.5 rounded-full bg-[#FBFAF6] border border-[#E8D399] text-[#B48811] text-[10px] font-black uppercase tracking-wider">
+                    {l('Admin Only', 'அட்மின் மட்டும்')}
                   </span>
                 </div>
 
-                <div className="space-y-2 max-h-[30rem] overflow-y-auto pr-1">
+                <div className="space-y-3 max-h-[34rem] overflow-y-auto pr-1">
                   {coupons.map((coupon) => {
                     const isExpired = coupon.expiry_date ? new Date(coupon.expiry_date) < new Date() : false
                     const isExhausted = coupon.usage_limit !== null && coupon.usage_count >= coupon.usage_limit
@@ -4119,62 +4185,71 @@ export default function Dashboard() {
                     return (
                       <div
                         key={coupon.id}
-                        className={`rounded-xl border p-3 shadow-sm transition-all ${
+                        className={`rounded-xl border p-4 shadow-xs transition-all ${
                           isEditing
-                            ? 'border-[#D4AF37] bg-[#FFF8F3] ring-1 ring-[#D4AF37]/15'
-                            : 'border-[#F0E2C8] bg-white hover:border-[#D8BA8A]'
+                            ? 'border-[#D4AF37] bg-[#FBFAF6] ring-2 ring-[#D4AF37]/30'
+                            : 'border-gray-200 bg-white hover:border-[#D4AF37]/60 hover:shadow-md'
                         }`}
                       >
                         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                           <div className="min-w-0 space-y-1.5">
-                            <div className="flex flex-wrap items-center gap-1.5">
-                              <p className="truncate text-[15px] font-black uppercase tracking-[0.14em] text-[#111111]">{coupon.code}</p>
-                              <span className={`rounded-full px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.14em] ${coupon.is_active ? 'bg-[#FCE7EA] text-[#D4AF37]' : 'bg-[#F8EDD9] text-[#9A6700]'}`}>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <p className="truncate text-[16px] font-mono font-black uppercase tracking-wider text-[#0A0A0A]">{coupon.code}</p>
+                              <span className={`rounded-full px-2.5 py-0.5 text-[9px] font-black uppercase tracking-wider border ${
+                                coupon.is_active
+                                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                  : 'bg-gray-100 text-gray-600 border-gray-200'
+                              }`}>
                                 {coupon.is_active ? l('Active', 'செயலில்') : l('Inactive', 'செயலற்ற')}
                               </span>
                               {isExpired && (
-                                <span className="rounded-full bg-red-100 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.14em] text-red-700">
+                                <span className="rounded-full bg-red-50 text-red-700 border border-red-200 px-2.5 py-0.5 text-[9px] font-black uppercase tracking-wider">
                                   Expired
                                 </span>
                               )}
                               {!isExpired && isExhausted && (
-                                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.14em] text-orange-700">
+                                <span className="rounded-full bg-amber-50 text-amber-800 border border-amber-200 px-2.5 py-0.5 text-[9px] font-black uppercase tracking-wider">
                                   Limit reached
                                 </span>
                               )}
                             </div>
 
-                            <p className="text-[12px] font-semibold text-[#D4AF37]">
-                              {coupon.percentage}% off
-                              {coupon.min_order_value > 0 && ` • min ₹${coupon.min_order_value}`}
+                            <p className="text-[13px] font-black text-[#B48811]">
+                              {coupon.percentage}% OFF
+                              {coupon.min_order_value > 0 && ` • min order ₹${coupon.min_order_value}`}
                             </p>
 
-                            <p className="text-[11px] text-[#6C665C]">
+                            <p className="text-[11px] font-medium text-[#6B7280]">
                               Used {coupon.usage_count}{coupon.usage_limit ? `/${coupon.usage_limit}` : ''} times
-                              {coupon.expiry_date ? ` • expires ${new Date(coupon.expiry_date).toLocaleDateString('en-IN')}` : ''}
+                              {coupon.expiry_date ? ` • expires ${new Date(coupon.expiry_date).toLocaleDateString('en-IN')}` : ' • no expiry'}
                             </p>
                           </div>
 
-                          <div className="flex shrink-0 items-center gap-1.5">
+                          <div className="flex shrink-0 items-center gap-2">
                             <button
                               onClick={() => void toggleCoupon(coupon)}
-                              className={`rounded-full px-2.5 py-1.5 text-[10px] font-black uppercase tracking-[0.14em] transition-colors ${
-                                coupon.is_active ? 'bg-[#FCE7EA] text-[#D4AF37] hover:bg-[#F8D7DD]' : 'bg-[#F8EDD9] text-[#9A6700] hover:bg-[#F2E0B9]'
+                              className={`rounded-lg px-3 py-1.5 text-[11px] font-black uppercase tracking-wider transition-all cursor-pointer ${
+                                coupon.is_active
+                                  ? 'bg-[#0A0A0A] text-[#D4AF37] border border-[#D4AF37]/40 hover:bg-[#1A1A1A]'
+                                  : 'bg-gray-100 text-gray-600 border border-gray-200 hover:bg-gray-200'
                               }`}
+                              title={coupon.is_active ? 'Click to deactivate' : 'Click to activate'}
                             >
                               {coupon.is_active ? l('Active', 'செயலில்') : l('Off', 'ஆஃப்')}
                             </button>
                             <button
                               onClick={() => startEditCoupon(coupon)}
-                              className="rounded-full border border-[#A7F3D0] bg-white p-2 text-[#D4AF37] transition-colors hover:border-[#D8BA8A] hover:text-[#741D2A]"
+                              className="w-8 h-8 rounded-lg border border-gray-200 bg-white hover:border-[#D4AF37] hover:bg-[#FBFAF6] text-gray-700 hover:text-[#B48811] flex items-center justify-center transition-all cursor-pointer shadow-xs"
+                              title="Edit coupon"
                             >
-                              <Edit2 size={14} />
+                              <Edit2 size={13} />
                             </button>
                             <button
                               onClick={() => void deleteCoupon(coupon)}
-                              className="rounded-full border border-[#F4D4D4] bg-white p-2 text-red-500 transition-colors hover:bg-red-50 hover:text-red-700"
+                              className="w-8 h-8 rounded-lg border border-gray-200 bg-white hover:border-red-200 hover:bg-red-50 text-gray-400 hover:text-red-600 flex items-center justify-center transition-all cursor-pointer shadow-xs"
+                              title="Delete coupon"
                             >
-                              <Trash2 size={14} />
+                              <Trash2 size={13} />
                             </button>
                           </div>
                         </div>
@@ -4183,7 +4258,7 @@ export default function Dashboard() {
                   })}
 
                   {coupons.length === 0 && (
-                    <div className="rounded-[22px] border border-dashed border-[#E7CFAA] bg-[#FFF8F3] py-12 text-center text-[14px] font-bold text-[#D4AF37]">
+                    <div className="rounded-2xl border border-dashed border-[#E8D399] bg-[#FBFAF6] py-12 text-center text-[13px] font-bold text-[#6B7280]">
                       {l('No coupons yet. Create your first coupon!', 'இன்னும் கூப்பன் இல்லை. முதல் கூப்பனை உருவாக்குங்கள்!')}
                     </div>
                   )}
