@@ -98,20 +98,22 @@ async function main() {
   }
 
   // 1. Android Adaptive / PWA Maskable Icons (Safe area: inner 80% circle)
-  // Inside 512x512, safe circle radius is 204.8px. A 310px high emblem has max corner radius ~181px (< 204.8px)
-  await generateSquareIcon(512, 310, path.join(PUBLIC_DIR, 'clad-icon-maskable-512.png'));
-  await generateSquareIcon(192, 116, path.join(PUBLIC_DIR, 'clad-icon-maskable-192.png'));
+  // Inside 512x512, target height 270px guarantees max radius ~158px (far within 204.8px safe zone),
+  // leaving generous, unmistakable ~24% top/bottom and ~26% left/right margins.
+  await generateSquareIcon(512, 270, path.join(PUBLIC_DIR, 'clad-icon-maskable-512.png'));
+  await generateSquareIcon(192, 100, path.join(PUBLIC_DIR, 'clad-icon-maskable-192.png'));
 
-  // 2. Standard Any Icons (68% scale, centered with luxury breathing room)
-  await generateSquareIcon(512, 348, path.join(PUBLIC_DIR, 'clad-icon-512.png'));
-  await generateSquareIcon(192, 130, path.join(PUBLIC_DIR, 'clad-icon-192.png'));
-  await generateSquareIcon(512, 348, path.join(PUBLIC_DIR, 'clad-icon.png'));
+  // 2. Standard Any Icons and Master Logo (58% scale with luxury margins)
+  await generateSquareIcon(512, 300, path.join(PUBLIC_DIR, 'clad-icon-512.png'));
+  await generateSquareIcon(192, 112, path.join(PUBLIC_DIR, 'clad-icon-192.png'));
+  await generateSquareIcon(512, 300, path.join(PUBLIC_DIR, 'clad-icon.png'));
+  await generateSquareIcon(512, 300, path.join(PUBLIC_DIR, 'clad-logo.png')); // Also update clad-logo.png!
 
-  // 3. Apple Touch Icon for iOS (180x180, ~65% scale to clear iOS squircle corners)
-  await generateSquareIcon(180, 118, path.join(PUBLIC_DIR, 'apple-touch-icon.png'));
+  // 3. Apple Touch Icon for iOS (180x180, ~58% scale to completely clear iOS squircle corners)
+  await generateSquareIcon(180, 105, path.join(PUBLIC_DIR, 'apple-touch-icon.png'));
 
   // 4. Favicon (64x64)
-  await generateSquareIcon(64, 46, path.join(PUBLIC_DIR, 'clad-favicon.png'));
+  await generateSquareIcon(64, 42, path.join(PUBLIC_DIR, 'clad-favicon.png'));
 
   console.log('\nAll PWA and app shortcut icons generated successfully with verified safe padding!');
 }

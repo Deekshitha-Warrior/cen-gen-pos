@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS public.store_reviews (
   comment     text,
   created_at  timestamptz NOT NULL DEFAULT now()
 );
+DROP FUNCTION IF EXISTS update_advance_order_status(uuid, text, text);
 ALTER TABLE public.store_reviews ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Anyone can insert reviews" ON public.store_reviews FOR INSERT WITH CHECK (true);
 CREATE POLICY "Anyone can read reviews"  ON public.store_reviews FOR SELECT USING (true);

@@ -32,25 +32,25 @@ export default defineConfig({
         scope: '/',
         icons: [
           {
-            src: '/clad-icon-192.png',
+            src: '/clad-icon-192.png?v=3',
             sizes: '192x192',
             type: 'image/png',
             purpose: 'any',
           },
           {
-            src: '/clad-icon-512.png',
+            src: '/clad-icon-512.png?v=3',
             sizes: '512x512',
             type: 'image/png',
             purpose: 'any',
           },
           {
-            src: '/clad-icon-maskable-192.png',
+            src: '/clad-icon-maskable-192.png?v=3',
             sizes: '192x192',
             type: 'image/png',
             purpose: 'maskable',
           },
           {
-            src: '/clad-icon-maskable-512.png',
+            src: '/clad-icon-maskable-512.png?v=3',
             sizes: '512x512',
             type: 'image/png',
             purpose: 'maskable',
