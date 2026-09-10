@@ -1,4 +1,5 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { X, Info } from 'lucide-react'
 import { type LabelSizeConfig, saveStoredCustomSize } from '../../lib/barcode'
 
@@ -19,6 +20,22 @@ export const CreateCustomSizeModal: React.FC<CreateCustomSizeModalProps> = ({
   const [heightMm, setHeightMm] = useState<string>('38')
   const [horizontalGapMm, setHorizontalGapMm] = useState<string>('2')
   const [error, setError] = useState('')
+
+  // Close on Escape key & lock body scrolling when open
+  useEffect(() => {
+    if (!isOpen) return
+    const originalOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.body.style.overflow = originalOverflow
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [isOpen, onClose])
 
   if (!isOpen) return null
 
@@ -60,11 +77,11 @@ export const CreateCustomSizeModal: React.FC<CreateCustomSizeModalProps> = ({
   const numHeight = parseFloat(heightMm) || 25
   const numGap = parseFloat(horizontalGapMm) || 2
 
-  return (
-    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-150">
-      <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] border border-[#E5E7EB] shadow-2xl overflow-hidden flex flex-col my-auto">
+  return createPortal(
+    <div className="fixed inset-0 top-0 left-0 right-0 bottom-0 w-screen h-screen h-[100dvh] z-[9999] flex items-center justify-center bg-black/75 backdrop-blur-sm p-0 sm:p-4 overflow-hidden animate-in fade-in duration-150">
+      <div className="bg-white rounded-none sm:rounded-2xl max-w-2xl w-full h-screen h-[100dvh] sm:h-auto sm:max-h-[90vh] border-0 sm:border border-[#E5E7EB] shadow-2xl overflow-hidden flex flex-col">
         {/* Header - fixed top */}
-        <div className="flex items-center justify-between px-6 py-3.5 border-b border-gray-200 bg-[#0A0A0A] text-white shrink-0">
+        <div className="flex items-center justify-between px-4 py-3 sm:px-6 sm:py-3.5 border-b border-gray-200 bg-[#0A0A0A] text-white shrink-0">
           <h3 className="text-base font-black tracking-wide text-white">Create Custom Size</h3>
           <button
             type="button"
@@ -231,7 +248,7 @@ export const CreateCustomSizeModal: React.FC<CreateCustomSizeModalProps> = ({
           </div>
 
           {/* Footer Action - fixed at bottom of modal */}
-          <div className="flex items-center justify-end gap-3 border-t border-gray-200 px-6 py-3.5 bg-gray-50/80 shrink-0">
+          <div className="flex items-center justify-end gap-3 border-t border-gray-200 px-4 py-3 sm:px-6 sm:py-3.5 bg-gray-50/80 shrink-0 pb-[calc(env(safe-area-inset-bottom)+0.75rem)]">
             <button
               type="button"
               onClick={onClose}
@@ -241,14 +258,15 @@ export const CreateCustomSizeModal: React.FC<CreateCustomSizeModalProps> = ({
             </button>
             <button
               type="submit"
-              className="px-6 py-2 rounded-xl bg-[#0A0A0A] border border-[#D4AF37] text-[#D4AF37] text-xs font-black uppercase tracking-wider hover:bg-[#1A1A1A] transition-all shadow-md cursor-pointer"
+              className="px-5 sm:px-6 py-2 rounded-xl bg-[#0A0A0A] border border-[#D4AF37] text-[#D4AF37] text-xs font-black uppercase tracking-wider hover:bg-[#1A1A1A] transition-all shadow-md cursor-pointer"
             >
               Save Custom Size
             </button>
           </div>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
 
