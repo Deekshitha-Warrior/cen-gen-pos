@@ -7,6 +7,7 @@ import {
   Package,
   Tag,
   Boxes,
+  ArrowLeft,
 } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useProductStore, type Product } from '../../store/store'
@@ -34,6 +35,7 @@ export const AddEditProductView: React.FC<{ onStockUpdated?: () => void }> = ({ 
   const [categories, setCategories] = useState<CategoryRecord[]>([])
   const [search, setSearch] = useState('')
   const [selectedProductId, setSelectedProductId] = useState<number | null>(null)
+  const [mobileView, setMobileView] = useState<'list' | 'form'>('list')
   const [sizePartition, setSizePartition] = useState<SizePartition>('alpha')
   const [customVariantInput, setCustomVariantInput] = useState('')
 
@@ -78,6 +80,7 @@ export const AddEditProductView: React.FC<{ onStockUpdated?: () => void }> = ({ 
 
   const startEditProduct = async (p: Product) => {
     setSelectedProductId(Number(p.id))
+    setMobileView('form')
     setName(p.name || '')
     setNameTa(p.nameTa || p.tamilName || '')
     setCategoryId(p.categoryId ? Number(p.categoryId) : '')
@@ -618,108 +621,176 @@ export const AddEditProductView: React.FC<{ onStockUpdated?: () => void }> = ({ 
   )
 
   return (
-    <div className="h-[calc(100vh-210px)] min-h-[480px] flex flex-col lg:flex-row gap-5 overflow-hidden">
-      {/* LEFT COLUMN: Products Browser List */}
-      <div className="w-full lg:w-80 xl:w-96 flex flex-col bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm shrink-0 h-full min-h-0">
-        <div className="p-3.5 border-b border-gray-200 bg-[#FAFAFA] flex items-center justify-between shrink-0">
-          <h4 className="text-xs font-bold text-gray-800">
-            Product Catalog ({activeProducts.length})
-          </h4>
-        </div>
-
-        <div className="p-3 border-b border-gray-100 bg-[#FBFAF6] shrink-0">
-          <div className="relative">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Search products, SKUs, barcode..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-8 pr-3 py-1.5 rounded-lg border border-gray-300 bg-white text-xs font-bold text-gray-900 outline-none focus:border-[#0A0A0A]"
-            />
-          </div>
-        </div>
-
-        <div className="flex-1 overflow-y-auto divide-y divide-gray-100 min-h-0 hide-scrollbar">
-          {filteredProducts.length === 0 ? (
-            <div className="p-8 text-center text-xs text-gray-400 font-bold">
-              No products found.
-            </div>
-          ) : (
-            filteredProducts.map((p) => (
-              <div
-                key={p.id}
-                onClick={() => startEditProduct(p)}
-                className={`group p-3 sm:p-3.5 hover:bg-[#FBFAF6] cursor-pointer flex items-center justify-between gap-2.5 transition-colors ${
-                  selectedProductId === Number(p.id) ? 'bg-[#FFF9E6] border-l-4 border-[#D4AF37]' : ''
-                }`}
-              >
-                <div className="flex-1 min-w-0 pr-1">
-                  <div className="font-bold text-xs text-gray-900 truncate" title={p.name}>
-                    {p.name}
-                  </div>
-                  <div className="text-[10px] text-gray-500 font-medium truncate">
-                    {p.category || 'General'} {p.hasVariants ? '• Multi-variant' : ''}
-                  </div>
-                </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <div className="text-right">
-                    <span className="font-black text-xs text-gray-900 tabular-nums">₹{p.price}</span>
-                    <span className="block text-[10px] text-emerald-700 font-bold tabular-nums">
-                      Stock: {p.stockQuantity ?? p.stock ?? 0}
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      handleDeleteProduct(Number(p.id), p.name)
-                    }}
-                    className="p-1.5 rounded-md text-gray-400 hover:text-red-600 hover:bg-red-50 md:opacity-0 md:group-hover:opacity-100 transition-all cursor-pointer"
-                    title={`Delete "${p.name}"`}
-                  >
-                    <Trash2 size={13} />
-                  </button>
-                </div>
-              </div>
-            ))
-          )}
-        </div>
+    <div className="flex flex-col gap-3">
+      {/* Mobile Switch: Product List vs Add/Edit Form */}
+      <div className="lg:hidden flex items-center p-1 bg-white border border-[#E8D399] rounded-2xl shadow-xs shrink-0">
+        <button
+          type="button"
+          onClick={() => setMobileView('list')}
+          className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 cursor-pointer ${
+            mobileView === 'list'
+              ? 'bg-[#0A0A0A] text-[#D4AF37] shadow-sm'
+              : 'text-gray-600 hover:text-black'
+          }`}
+        >
+          <Boxes size={15} /> Catalog ({activeProducts.length})
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            if (mobileView === 'form' && selectedProductId) {
+              resetForm()
+            }
+            setMobileView('form')
+          }}
+          className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 cursor-pointer ${
+            mobileView === 'form'
+              ? 'bg-[#0A0A0A] text-[#D4AF37] shadow-sm'
+              : 'text-gray-600 hover:text-black'
+          }`}
+        >
+          <Plus size={15} /> {selectedProductId ? 'Edit Product' : 'Add New Product'}
+        </button>
       </div>
 
-      {/* RIGHT COLUMN: Product Authoring Form Workspace */}
-      <div className="flex-1 flex flex-col bg-[#FBFAF6] border border-gray-200 rounded-2xl shadow-sm overflow-hidden h-full min-h-0">
-        {/* Pinned Form Header */}
-        <div className="px-5 py-3.5 sm:px-6 sm:py-4 bg-white border-b border-gray-200 flex items-center justify-between shrink-0">
-          <div>
-            <h3 className="text-sm font-bold text-black flex items-center gap-2">
-              <Package size={16} className="text-[#D4AF37]" />
-              {selectedProductId ? 'Edit Product & Stock Details' : 'Add New Product to Catalog'}
-            </h3>
-            <p className="text-[11px] text-gray-500 font-semibold">
-              Receive stock, configure pricing &amp; categories (Barcode is optional)
-            </p>
+      <div className="h-[calc(100vh-250px)] sm:h-[calc(100vh-220px)] min-h-[480px] flex flex-col lg:flex-row gap-5 overflow-hidden">
+        {/* LEFT COLUMN: Products Browser List */}
+        <div className={`w-full lg:w-80 xl:w-96 flex-col bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm shrink-0 h-full min-h-0 ${
+          mobileView === 'list' ? 'flex' : 'hidden lg:flex'
+        }`}>
+          <div className="p-3.5 border-b border-gray-200 bg-[#FAFAFA] flex items-center justify-between shrink-0">
+            <h4 className="text-xs font-bold text-gray-800">
+              Product Catalog ({activeProducts.length})
+            </h4>
+            <button
+              type="button"
+              onClick={() => {
+                resetForm()
+                setMobileView('form')
+              }}
+              className="px-3 py-1.5 rounded-xl bg-[#0A0A0A] text-[#D4AF37] border border-[#D4AF37]/50 text-xs font-black flex items-center gap-1.5 hover:bg-[#1A1A1A] transition shadow-xs cursor-pointer"
+              title="Add a new product"
+            >
+              <Plus size={13} /> Add Product
+            </button>
           </div>
-          {selectedProductId && (
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={() => handleDeleteProduct(selectedProductId, name)}
-                className="text-xs font-bold text-red-600 hover:text-red-700 hover:underline flex items-center gap-1 cursor-pointer"
-                title="Delete this product"
-              >
-                <Trash2 size={13} /> Delete Product
-              </button>
-              <button
-                type="button"
-                onClick={resetForm}
-                className="text-xs font-bold text-blue-600 hover:underline cursor-pointer"
-              >
-                + Create Another
-              </button>
+
+          <div className="p-3 border-b border-gray-100 bg-[#FBFAF6] shrink-0">
+            <div className="relative">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Search products, SKUs, barcode..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full pl-8 pr-3 py-1.5 rounded-lg border border-gray-300 bg-white text-xs font-bold text-gray-900 outline-none focus:border-[#0A0A0A]"
+              />
             </div>
-          )}
+          </div>
+
+          <div className="flex-1 overflow-y-auto divide-y divide-gray-100 min-h-0 hide-scrollbar">
+            {filteredProducts.length === 0 ? (
+              <div className="p-8 text-center text-xs text-gray-400 font-bold">
+                No products found.
+              </div>
+            ) : (
+              filteredProducts.map((p) => (
+                <div
+                  key={p.id}
+                  onClick={() => startEditProduct(p)}
+                  className={`group p-3 sm:p-3.5 hover:bg-[#FBFAF6] cursor-pointer flex items-center justify-between gap-2.5 transition-colors ${
+                    selectedProductId === Number(p.id) ? 'bg-[#FFF9E6] border-l-4 border-[#D4AF37]' : ''
+                  }`}
+                >
+                  <div className="flex-1 min-w-0 pr-1">
+                    <div className="font-bold text-xs text-gray-900 truncate" title={p.name}>
+                      {p.name}
+                    </div>
+                    <div className="text-[10px] text-gray-500 font-medium truncate">
+                      {p.category || 'General'} {p.hasVariants ? '• Multi-variant' : ''}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <div className="text-right">
+                      <span className="font-black text-xs text-gray-900 tabular-nums">₹{p.price}</span>
+                      <span className="block text-[10px] text-emerald-700 font-bold tabular-nums">
+                        Stock: {p.stockQuantity ?? p.stock ?? 0}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleDeleteProduct(Number(p.id), p.name)
+                      }}
+                      className="p-1.5 rounded-md text-gray-400 hover:text-red-600 hover:bg-red-50 md:opacity-0 md:group-hover:opacity-100 transition-all cursor-pointer"
+                      title={`Delete "${p.name}"`}
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
         </div>
+
+        {/* RIGHT COLUMN: Product Authoring Form Workspace */}
+        <div className={`flex-1 flex-col bg-[#FBFAF6] border border-gray-200 rounded-2xl shadow-sm overflow-hidden h-full min-h-0 ${
+          mobileView === 'form' ? 'flex' : 'hidden lg:flex'
+        }`}>
+          {/* Pinned Form Header */}
+          <div className="px-4 py-3 sm:px-6 sm:py-4 bg-white border-b border-gray-200 flex items-center justify-between shrink-0 gap-2">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <button
+                type="button"
+                onClick={() => setMobileView('list')}
+                className="lg:hidden p-1.5 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700 transition cursor-pointer shrink-0"
+                title="Back to Catalog List"
+              >
+                <ArrowLeft size={16} />
+              </button>
+              <div className="min-w-0">
+                <h3 className="text-sm font-bold text-black flex items-center gap-2 truncate">
+                  <Package size={16} className="text-[#D4AF37] shrink-0" />
+                  <span className="truncate">{selectedProductId ? 'Edit Product & Stock Details' : 'Add New Product to Catalog'}</span>
+                </h3>
+                <p className="text-[11px] text-gray-500 font-semibold truncate hidden sm:block">
+                  Receive stock, configure pricing &amp; categories (Barcode is optional)
+                </p>
+              </div>
+            </div>
+            {selectedProductId ? (
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => handleDeleteProduct(selectedProductId, name)}
+                  className="text-xs font-bold text-red-600 hover:text-red-700 hover:underline flex items-center gap-1 cursor-pointer"
+                  title="Delete this product"
+                >
+                  <Trash2 size={13} /> <span className="hidden sm:inline">Delete Product</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    resetForm()
+                    setMobileView('form')
+                  }}
+                  className="text-xs font-bold text-blue-600 hover:underline cursor-pointer"
+                >
+                  + New
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setMobileView('list')}
+                className="lg:hidden text-xs font-bold text-gray-500 hover:text-black cursor-pointer px-2 py-1 rounded-lg bg-gray-100"
+              >
+                Catalog ({activeProducts.length})
+              </button>
+            )}
+          </div>
 
         {/* Scrollable Form Body with Pinned Bottom Action Bar */}
         <form onSubmit={handleSaveProduct} className="flex-1 flex flex-col min-h-0 overflow-hidden">
@@ -1184,5 +1255,6 @@ export const AddEditProductView: React.FC<{ onStockUpdated?: () => void }> = ({ 
         </form>
       </div>
     </div>
+  </div>
   )
 }
