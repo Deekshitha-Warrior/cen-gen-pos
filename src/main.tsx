@@ -17,18 +17,48 @@ if (typeof window !== 'undefined') {
     }
   })
 
-  const isBenignError = (errorMsg: string) => {
-    if (!errorMsg) return false
+  const isBenignError = (errorMsg: string, source?: string) => {
+    if (!errorMsg && !source) return false
+    const s = `${errorMsg} ${source || ''}`
     return (
-      errorMsg.includes('message channel closed before a response was received') ||
-      errorMsg.includes('A listener indicated an asynchronous response') ||
-      errorMsg.includes('ResizeObserver loop completed with undelivered notifications') ||
-      errorMsg.includes('ResizeObserver loop limit exceeded') ||
-      errorMsg.includes('Non-Error promise rejection captured') ||
-      errorMsg.includes('Permissions policy violation: unload') ||
-      errorMsg.includes('unload is not allowed in this document') ||
-      errorMsg.includes('Using DEFAULT root logger')
+      s.includes('disconnected port object') ||
+      s.includes('Attempting to use a disconnected port object') ||
+      s.includes('proxy.js') ||
+      s.includes('handleMessageFromPage') ||
+      s.includes('message channel closed before a response was received') ||
+      s.includes('The message port closed before a response was received') ||
+      s.includes('A listener indicated an asynchronous response') ||
+      s.includes('Extension context invalidated') ||
+      s.includes('Could not establish connection. Receiving end does not exist') ||
+      s.includes('ResizeObserver loop completed with undelivered notifications') ||
+      s.includes('ResizeObserver loop limit exceeded') ||
+      s.includes('Non-Error promise rejection captured') ||
+      s.includes('Permissions policy violation: unload') ||
+      s.includes('unload is not allowed in this document') ||
+      s.includes('Using DEFAULT root logger')
     )
+  }
+
+  window.onerror = (message, source, _lineno, _colno, error) => {
+    const errStr = error instanceof Error ? error.message : String(error || '')
+    if (isBenignError(String(message), String(source || '')) || isBenignError(errStr, String(source || ''))) {
+      return true
+    }
+  }
+
+  window.onunhandledrejection = (event) => {
+    const errorMsg =
+      event.reason instanceof Error
+        ? event.reason.message
+        : typeof event.reason === 'string'
+        ? event.reason
+        : event.reason && typeof event.reason === 'object' && 'message' in event.reason
+        ? String((event.reason as { message?: unknown }).message)
+        : ''
+    if (isBenignError(errorMsg)) {
+      event.preventDefault()
+      return true
+    }
   }
 
   window.addEventListener(
@@ -74,7 +104,8 @@ if (typeof window !== 'undefined') {
       const errorMsg =
         event.message ||
         (event.error instanceof Error ? event.error.message : String(event.error || ''))
-      if (isBenignError(errorMsg)) {
+      const src = event.filename || ''
+      if (isBenignError(errorMsg, src)) {
         event.preventDefault()
         event.stopImmediatePropagation?.()
       }

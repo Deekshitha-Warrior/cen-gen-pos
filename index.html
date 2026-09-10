@@ -6,12 +6,19 @@
     <!-- Early Exception & Extension Channel Error Guard -->
     <script>
       (function() {
-        var isBenign = function(msg) {
-          if (!msg) return false;
-          var s = String(msg);
+        var isBenign = function(msg, source) {
+          if (!msg && !source) return false;
+          var s = String(msg || '') + ' ' + String(source || '');
           return (
+            s.indexOf('disconnected port object') !== -1 ||
+            s.indexOf('Attempting to use a disconnected port object') !== -1 ||
+            s.indexOf('proxy.js') !== -1 ||
+            s.indexOf('handleMessageFromPage') !== -1 ||
             s.indexOf('message channel closed before a response was received') !== -1 ||
+            s.indexOf('The message port closed before a response was received') !== -1 ||
             s.indexOf('A listener indicated an asynchronous response') !== -1 ||
+            s.indexOf('Extension context invalidated') !== -1 ||
+            s.indexOf('Could not establish connection. Receiving end does not exist') !== -1 ||
             s.indexOf('ResizeObserver loop completed with undelivered notifications') !== -1 ||
             s.indexOf('ResizeObserver loop limit exceeded') !== -1 ||
             s.indexOf('Non-Error promise rejection captured') !== -1 ||
@@ -21,10 +28,26 @@
           );
         };
 
+        window.onerror = function(message, source, lineno, colno, error) {
+          var errStr = (error && (error.message || error.stack)) || '';
+          if (isBenign(message, source) || isBenign(errStr, source)) {
+            return true; // Suppresses uncaught error display in browser console
+          }
+        };
+
+        window.onunhandledrejection = function(event) {
+          var reason = event.reason;
+          var msg = (reason && (reason.message || reason.stack || reason)) || '';
+          if (isBenign(msg, '')) {
+            event.preventDefault();
+            return true;
+          }
+        };
+
         window.addEventListener('unhandledrejection', function(event) {
           var reason = event.reason;
           var msg = (reason && (reason.message || reason.stack || reason)) || '';
-          if (isBenign(msg)) {
+          if (isBenign(msg, '')) {
             event.preventDefault();
             if (event.stopImmediatePropagation) event.stopImmediatePropagation();
             return false;
@@ -33,22 +56,27 @@
 
         window.addEventListener('error', function(event) {
           var msg = event.message || (event.error && (event.error.message || event.error.stack)) || '';
-          if (isBenign(msg)) {
+          var src = event.filename || '';
+          if (isBenign(msg, src)) {
             event.preventDefault();
             if (event.stopImmediatePropagation) event.stopImmediatePropagation();
             return false;
           }
         }, true);
 
-        // Filter benign extension violation warnings from console
+        // Filter benign extension warnings from console
         var origWarn = console.warn;
         console.warn = function() {
-          if (arguments.length > 0 && isBenign(arguments[0])) return;
+          for (var i = 0; i < arguments.length; i++) {
+            if (arguments[i] && isBenign(arguments[i], '')) return;
+          }
           return origWarn.apply(console, arguments);
         };
         var origError = console.error;
         console.error = function() {
-          if (arguments.length > 0 && isBenign(arguments[0])) return;
+          for (var i = 0; i < arguments.length; i++) {
+            if (arguments[i] && isBenign(arguments[i], '')) return;
+          }
           return origError.apply(console, arguments);
         };
       })();
