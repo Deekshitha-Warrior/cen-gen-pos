@@ -39,27 +39,37 @@ export default function AdminLogin() {
   return (
     <div className="relative h-screen max-h-screen min-h-screen overflow-y-auto lg:overflow-hidden bg-white p-3 sm:p-5 lg:p-6 font-sans flex items-center justify-center">
       <div className="relative grid w-full max-w-4xl max-h-[92vh] overflow-hidden rounded-3xl border border-gray-200/90 bg-[#141414] shadow-[0_25px_60px_-12px_rgba(0,0,0,0.25),0_12px_28px_-6px_rgba(0,0,0,0.15)] lg:grid-cols-[0.85fr_1.15fr]">
-        <div className="hidden flex-col justify-between bg-[#0A0A0A] border-r border-[#D4AF37]/20 p-6 lg:p-8 text-white lg:flex overflow-y-auto hide-scrollbar">
-          <div>
-            <div className="mb-5 inline-flex items-center gap-2 rounded-2xl bg-[#141414] border border-[#D4AF37]/40 px-3.5 py-2 shadow-xl">
-              <img src={BRAND_LOGO} alt={BRAND_EN} className="w-6 h-6 object-contain" />
-              <span className="text-xs font-black tracking-widest text-white uppercase">{BRAND_EN}</span>
-            </div>
-            <p className="text-[10px] font-black uppercase tracking-[0.26em] text-[#D4AF37]">{BRAND_SUBTITLE}</p>
-            <h2 className="mt-3 max-w-xs text-2xl lg:text-3xl font-black leading-tight tracking-tight text-white">Everything you need to run retail billing clearly.</h2>
-            <p className="mt-3.5 max-w-sm text-xs leading-6 text-white/70">Manage barcodes, SKU variants, inventory ledger, POS billing, invoices, and customer communications from one secure portal.</p>
+        <div className="hidden flex-col justify-between items-center bg-[#0A0A0A] border-r border-[#D4AF37]/20 p-8 lg:p-10 text-white lg:flex overflow-y-auto hide-scrollbar">
+          <div className="w-full flex items-center justify-between">
+            <p className="text-[11px] font-black uppercase tracking-[0.26em] text-[#D4AF37]">{BRAND_SUBTITLE}</p>
           </div>
-          <div className="mt-6 flex items-center gap-2 text-xs font-bold text-[#D4AF37]"><ShieldCheck size={15} /> Secure retail workspace</div>
+          <div className="my-auto flex flex-col items-center justify-center py-6 w-full">
+            <div className="relative p-6 sm:p-8 rounded-3xl bg-[#141414] border border-[#D4AF37]/40 shadow-[0_20px_50px_rgba(0,0,0,0.5),0_0_40px_rgba(212,175,55,0.15)] flex items-center justify-center max-w-[280px] w-full aspect-square">
+              <img
+                src={BRAND_LOGO}
+                alt={BRAND_EN}
+                className="w-full h-full object-contain filter drop-shadow-[0_10px_20px_rgba(0,0,0,0.6)]"
+              />
+            </div>
+          </div>
+          <div className="w-full flex items-center justify-center gap-2 text-xs font-bold text-[#D4AF37]">
+            <ShieldCheck size={15} /> Secure retail workspace
+          </div>
         </div>
         <div className="p-5 sm:p-7 lg:p-8 bg-white text-[#111111] overflow-y-auto hide-scrollbar flex flex-col justify-center">
           {/* Brand */}
           <div className="mb-4 sm:mb-5 flex flex-col items-center text-center lg:items-start lg:text-left">
-            <div className="mb-3 w-12 h-12 rounded-2xl bg-[#0A0A0A] border border-[#D4AF37]/50 p-1 flex items-center justify-center shadow-md">
-              <img src={BRAND_LOGO} alt={BRAND_EN} className="w-full h-full object-contain" />
+            {/* Mobile-only logo (since left panel is hidden on mobile) */}
+            <div className="mb-3 lg:hidden flex justify-center">
+              <div className="w-16 h-16 rounded-2xl bg-[#0A0A0A] border border-[#D4AF37]/50 p-2 flex items-center justify-center shadow-md">
+                <img src={BRAND_LOGO} alt={BRAND_EN} className="w-full h-full object-contain" />
+              </div>
             </div>
             <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#B48811]">{BRAND_SUBTITLE}</p>
             <h1 className="mt-1 text-2xl sm:text-3xl font-black tracking-tight text-[#0A0A0A]">{BRAND_EN}</h1>
-            <p className="mt-0.5 text-xs font-semibold text-[#7A786F]">{BRAND_TA}</p>
+            {BRAND_TA && BRAND_TA !== BRAND_EN && (
+              <p className="mt-0.5 text-xs font-semibold text-[#7A786F]">{BRAND_TA}</p>
+            )}
             <p className="mt-2.5 inline-flex items-center gap-1.5 rounded-full border border-[#D4AF37] bg-[#FBFAF6] px-3 py-1 text-[10px] font-black uppercase tracking-wider text-[#0A0A0A]">
               <ShieldCheck size={12} className="text-[#B48811]" />
               {l('Admin / Staff Portal', 'நிர்வாக நுழைவு')}

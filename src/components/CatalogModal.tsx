@@ -215,43 +215,41 @@ export default function CatalogModal({ isOpen, onClose, onAdd }: CatalogModalPro
               ) : (                  <div className="grid grid-cols-1 min-[360px]:grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
                   {filtered.map(product => (
                     <div key={product.id}
-                      className="bg-white border border-[#E5E7EB]/60 rounded-2xl p-3 flex flex-col justify-between gap-2 hover:border-[#D4AF37]/40 hover:shadow-md transition-all group">
-                      <div>
-                        <div className="flex items-start justify-between gap-2 mb-1">
-                          <div onClick={() => onAdd(product)} className="cursor-pointer flex-1 min-w-0">
-                            <h4 className="text-[13px] font-black text-[#111111] leading-snug group-hover:text-[#D4AF37] transition-colors line-clamp-2">
-                              {product.name}
-                            </h4>
-                            {product.nameTa && (
-                              <p className="text-[10px] font-bold text-[#374151] mt-0.5 truncate">
-                                {product.nameTa}
-                              </p>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-1 shrink-0 pt-0.5 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
-                            <button
-                              onClick={(e) => { e.stopPropagation(); startEdit(product) }}
-                              title="Edit product"
-                              className="p-1.5 rounded-lg bg-white border border-[#E5E7EB]/80 text-[#374151] hover:text-[#D4AF37] hover:border-[#D4AF37]/40 shadow-xs transition-colors"
-                            >
-                              <Edit2 size={13} />
-                            </button>
-                            <button
-                              onClick={(e) => { e.stopPropagation(); void handleDelete(product) }}
-                              title="Delete product"
-                              className="p-1.5 rounded-lg bg-white border border-[#E5E7EB]/80 text-red-400 hover:text-red-600 hover:border-red-300 shadow-xs transition-colors"
-                            >
-                              <Trash2 size={13} />
-                            </button>
-                          </div>
-                        </div>
+                      className="bg-white border border-[#E5E7EB]/60 rounded-2xl p-3 flex flex-col justify-between gap-2.5 hover:border-[#D4AF37]/40 hover:shadow-md transition-all group">
+                      <div onClick={() => onAdd(product)} className="cursor-pointer w-full">
+                        <h4 className="text-[13px] font-black text-[#111111] leading-snug group-hover:text-[#D4AF37] transition-colors break-words line-clamp-2">
+                          {product.name}
+                        </h4>
+                        {product.nameTa && (
+                          <p className="text-[10px] font-bold text-[#374151] mt-0.5 truncate">
+                            {product.nameTa}
+                          </p>
+                        )}
                       </div>
-                      <div onClick={() => onAdd(product)} className="cursor-pointer pt-2 border-t border-[#E5E7EB]/30">
-                        <div className="flex items-center justify-between">
+                      <div className="pt-2 border-t border-[#E5E7EB]/40 flex items-center justify-between gap-1.5">
+                        <div onClick={() => onAdd(product)} className="cursor-pointer flex flex-col min-w-0">
                           <span className="text-[14px] font-black text-[#111111] tabular-nums">₹{product.price}</span>
-                          <span className="text-[9px] font-black text-[#374151] uppercase tracking-wider bg-[#F9FAFB] px-2 py-0.5 rounded border border-[#E5E7EB]/40 truncate max-w-[110px]">
+                          <span className="text-[9px] font-bold text-[#374151] uppercase tracking-wider bg-[#F9FAFB] px-1.5 py-0.5 rounded border border-[#E5E7EB]/40 truncate max-w-[80px]">
                             {product.category}
                           </span>
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); startEdit(product) }}
+                            title="Edit product"
+                            className="p-1.5 rounded-lg bg-white border border-[#E5E7EB]/80 text-[#374151] hover:text-[#D4AF37] hover:border-[#D4AF37]/40 shadow-xs transition-colors cursor-pointer"
+                          >
+                            <Edit2 size={13} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); void handleDelete(product) }}
+                            title="Delete product"
+                            className="p-1.5 rounded-lg bg-white border border-[#E5E7EB]/80 text-red-400 hover:text-red-600 hover:border-red-300 shadow-xs transition-colors cursor-pointer"
+                          >
+                            <Trash2 size={13} />
+                          </button>
                         </div>
                       </div>
                     </div>

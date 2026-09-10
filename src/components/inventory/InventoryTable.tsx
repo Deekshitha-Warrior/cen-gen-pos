@@ -374,7 +374,7 @@ export const InventoryTable: React.FC = () => {
               <>
                 {/* DESKTOP / TABLET VIEW (md and up) */}
                 <div className="hidden md:block overflow-x-auto">
-                  <table className="w-full text-left text-xs border-collapse">
+                  <table className="w-full min-w-[860px] text-left text-xs border-collapse">
                     <thead className="bg-[#FBFAF6] border-b border-gray-200 text-xs font-bold text-gray-700 select-none">
                       <tr>
                         <th className="py-3.5 px-4 text-left min-w-[220px]">Product &amp; Variant SKU</th>

@@ -3,6 +3,8 @@ export const BRAND_TA = 'CLAD Clothing'
 export const BRAND_SHORT = 'CLAD'
 export const BRAND_SUBTITLE = 'Retail Billing & Inventory'
 export const BRAND_LOGO = '/clad-logo.png'
+export const BRAND_ICON = '/clad-icon.png'
+export const BRAND_FAVICON = '/clad-favicon.png'
 export const BRAND_PRODUCTION_DOMAIN = 'https://cen-gen-pos.vercel.app'
 
 // Owner / Personal contact

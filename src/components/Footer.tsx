@@ -16,6 +16,7 @@ import {
   BRAND_THIRD_PHONE_E164,
   BRAND_ADDRESS,
   BRAND_LOGO,
+  BRAND_ICON,
 } from '../lib/brand'
 
 export default function Footer() {
@@ -72,7 +73,7 @@ export default function Footer() {
         <div className="md:col-span-1">
           <div className="flex items-center gap-2.5 mb-4">
             <div className="w-10 h-10 bg-[#0A0A0A] border border-[#D4AF37]/50 rounded-xl flex items-center justify-center p-1 overflow-hidden shrink-0">
-              <img src={BRAND_LOGO} alt={BRAND_EN} className="w-full h-full object-contain" />
+              <img src={BRAND_ICON} alt={BRAND_EN} className="w-full h-full object-contain" />
             </div>
             <div>
               <p className="font-bold text-white text-base sm:text-lg font-headline leading-tight">{BRAND_EN}</p>

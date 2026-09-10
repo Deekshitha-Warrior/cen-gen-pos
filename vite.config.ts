@@ -11,6 +11,8 @@ export default defineConfig({
       injectRegister: 'auto',
       includeAssets: [
         'clad-logo.png',
+        'clad-icon.png',
+        'clad-favicon.png',
         'robots.txt',
       ],
       manifest: {
@@ -25,13 +27,13 @@ export default defineConfig({
         scope: '/',
         icons: [
           {
-            src: '/clad-logo.png',
+            src: '/clad-icon.png',
             sizes: '192x192',
             type: 'image/png',
             purpose: 'any',
           },
           {
-            src: '/clad-logo.png',
+            src: '/clad-icon.png',
             sizes: '512x512',
             type: 'image/png',
             purpose: 'maskable',

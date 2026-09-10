@@ -15,8 +15,9 @@ import { inventoryService, type CategoryRecord } from '../../services/inventoryS
 
 export const STANDARD_LETTER_SIZES = ['XS', 'S', 'M', 'L', 'XL', '2XL', '3XL', '4XL', '5XL', 'Free Size'] as const
 export const STANDARD_NUMERIC_SIZES = ['28', '30', '32', '34', '36', '38', '40', '42', '44', '46', '48'] as const
+export const STANDARD_SPECIAL_SIZES = ['Free Size', 'One Size', 'Semi-Stitched', 'Unstitched', 'XXS', '6XL', 'Kids 2-3Y', 'Kids 4-5Y', 'Kids 6-7Y', 'Kids 8-9Y'] as const
 
-export type SizePartition = 'alpha' | 'numeric'
+export type SizePartition = 'alpha' | 'numeric' | 'custom'
 
 export interface VariantInputRow {
   id: string
@@ -34,6 +35,7 @@ export const AddEditProductView: React.FC<{ onStockUpdated?: () => void }> = ({ 
   const [search, setSearch] = useState('')
   const [selectedProductId, setSelectedProductId] = useState<number | null>(null)
   const [sizePartition, setSizePartition] = useState<SizePartition>('alpha')
+  const [customVariantInput, setCustomVariantInput] = useState('')
 
   // Form State
   const [name, setName] = useState('')
@@ -142,17 +144,34 @@ export const AddEditProductView: React.FC<{ onStockUpdated?: () => void }> = ({ 
   }
 
   const handleAddStandardSize = (size: string) => {
-    if (variantRows.some((r) => r.variantName.trim().toUpperCase() === size.trim().toUpperCase())) {
+    const trimmed = size.trim()
+    if (!trimmed) return
+
+    if (variantRows.some((r) => r.variantName.trim().toUpperCase() === trimmed.toUpperCase())) {
       return
     }
     const baseP = parseFloat(price) || 0
     const baseC = parseFloat(purchasePrice) || 0
+
+    // If there is already a blank row with no size and 0 stock, fill that row instead of adding a new one!
+    const blankRowIndex = variantRows.findIndex((r) => !r.variantName.trim() && !r.stock)
+    if (blankRowIndex !== -1) {
+      setVariantRows((prev) =>
+        prev.map((r, idx) =>
+          idx === blankRowIndex
+            ? { ...r, variantName: trimmed, sizeLabel: trimmed, price: r.price || baseP, costPrice: r.costPrice || baseC }
+            : r
+        )
+      )
+      return
+    }
+
     setVariantRows((prev) => [
       ...prev,
       {
-        id: `var_${Date.now()}_${Math.random()}`,
-        variantName: size,
-        sizeLabel: size,
+        id: `var_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+        variantName: trimmed,
+        sizeLabel: trimmed,
         price: baseP,
         costPrice: baseC,
         stock: 0,
@@ -161,17 +180,31 @@ export const AddEditProductView: React.FC<{ onStockUpdated?: () => void }> = ({ 
     ])
   }
 
+  const handleAddCustomNamedVariant = (name: string) => {
+    const trimmed = name.trim()
+    if (!trimmed) return
+    handleAddStandardSize(trimmed)
+    setCustomVariantInput('')
+  }
+
   const handleAddFullPack = (partition: SizePartition) => {
-    const list = partition === 'alpha' ? ['S', 'M', 'L', 'XL', '2XL'] : ['28', '30', '32', '34', '36', '38']
+    const list =
+      partition === 'alpha'
+        ? ['S', 'M', 'L', 'XL', '2XL']
+        : partition === 'numeric'
+        ? ['28', '30', '32', '34', '36', '38']
+        : ['Free Size', 'One Size', 'Semi-Stitched', 'Unstitched']
     const baseP = parseFloat(price) || 0
     const baseC = parseFloat(purchasePrice) || 0
     setVariantRows((prev) => {
-      const existing = new Set(prev.map((r) => r.variantName.trim().toUpperCase()))
+      // Remove any unedited blank row when adding a full pack
+      const cleaned = prev.filter((r) => r.variantName.trim() !== '' || r.stock > 0)
+      const existing = new Set(cleaned.map((r) => r.variantName.trim().toUpperCase()))
       const toAdd: VariantInputRow[] = []
       for (const s of list) {
         if (!existing.has(s.toUpperCase())) {
           toAdd.push({
-            id: `var_${Date.now()}_${Math.random()}_${s}`,
+            id: `var_${Date.now()}_${Math.random().toString(36).slice(2, 7)}_${s}`,
             variantName: s,
             sizeLabel: s,
             price: baseP,
@@ -181,7 +214,7 @@ export const AddEditProductView: React.FC<{ onStockUpdated?: () => void }> = ({ 
           })
         }
       }
-      return [...prev, ...toAdd]
+      return [...cleaned, ...toAdd]
     })
   }
 
@@ -215,7 +248,8 @@ export const AddEditProductView: React.FC<{ onStockUpdated?: () => void }> = ({ 
       return
     }
 
-    const firstVariant = variantRows.find((v) => v.variantName.trim())
+    const validVariants = variantRows.filter((v) => v.variantName.trim() !== '')
+    const firstVariant = validVariants[0]
     const priceNum = hasVariants && firstVariant ? (Number(firstVariant.price) || 0) : (parseFloat(price) || 0)
     const costNum = hasVariants && firstVariant ? (Number(firstVariant.costPrice) || 0) : (parseFloat(purchasePrice) || 0)
 
@@ -224,8 +258,8 @@ export const AddEditProductView: React.FC<{ onStockUpdated?: () => void }> = ({ 
       return
     }
 
-    if (hasVariants && (!variantRows.length || variantRows.some((v) => !v.variantName.trim()))) {
-      setStatusMessage({ type: 'error', text: 'Please provide names for all added variants' })
+    if (hasVariants && validVariants.length === 0) {
+      setStatusMessage({ type: 'error', text: 'Please add at least one variant SKU (e.g. Size S, 32, or custom variant)' })
       return
     }
 
@@ -865,9 +899,6 @@ export const AddEditProductView: React.FC<{ onStockUpdated?: () => void }> = ({ 
                     checked={hasVariants}
                     onChange={(e) => {
                       setHasVariants(e.target.checked)
-                      if (e.target.checked && variantRows.length === 0) {
-                        handleAddVariantRow()
-                      }
                     }}
                     className="sr-only peer"
                   />
@@ -877,8 +908,8 @@ export const AddEditProductView: React.FC<{ onStockUpdated?: () => void }> = ({ 
 
               {hasVariants && (
                 <div className="space-y-4 pt-3 border-t border-gray-100">
-                  {/* Standardized Partitioned Size Selector */}
-                  <div className="bg-[#FBFAF6] border border-[#E8D399] rounded-xl p-3 space-y-2.5">
+                  {/* Standardized Partitioned Size Selector & Custom Variant Bar */}
+                  <div className="bg-[#FBFAF6] border border-[#E8D399] rounded-xl p-3 space-y-3">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div className="flex items-center gap-1 p-0.5 bg-white border border-gray-200 rounded-lg">
                         <button
@@ -903,6 +934,17 @@ export const AddEditProductView: React.FC<{ onStockUpdated?: () => void }> = ({ 
                         >
                           Numeric Sizes (28, 30, 32...)
                         </button>
+                        <button
+                          type="button"
+                          onClick={() => setSizePartition('custom')}
+                          className={`px-3 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer ${
+                            sizePartition === 'custom'
+                              ? 'bg-[#0A0A0A] text-[#D4AF37] shadow-xs'
+                              : 'text-gray-600 hover:text-black'
+                          }`}
+                        >
+                          Special & Custom
+                        </button>
                       </div>
 
                       <button
@@ -910,16 +952,24 @@ export const AddEditProductView: React.FC<{ onStockUpdated?: () => void }> = ({ 
                         onClick={() => handleAddFullPack(sizePartition)}
                         className="px-2.5 py-1 rounded-lg bg-white border border-[#D4AF37] text-[#0A0A0A] text-[11px] font-bold hover:bg-[#FFF9E6] transition-colors cursor-pointer"
                       >
-                        + Add Full Size Set ({sizePartition === 'alpha' ? 'S to 2XL' : '28 to 38'})
+                        + Add Full Size Set ({sizePartition === 'alpha' ? 'S to 2XL' : sizePartition === 'numeric' ? '28 to 38' : 'Standard Specials'})
                       </button>
                     </div>
 
+                    {/* Quick-Add Chips */}
                     <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
                       <span className="text-[10px] font-black uppercase text-gray-400 tracking-wider mr-1">
                         Quick Add:
                       </span>
-                      {(sizePartition === 'alpha' ? STANDARD_LETTER_SIZES : STANDARD_NUMERIC_SIZES).map((sz) => {
-                        const isSelected = variantRows.some((r) => r.variantName.trim().toUpperCase() === sz.toUpperCase())
+                      {(sizePartition === 'alpha'
+                        ? STANDARD_LETTER_SIZES
+                        : sizePartition === 'numeric'
+                        ? STANDARD_NUMERIC_SIZES
+                        : STANDARD_SPECIAL_SIZES
+                      ).map((sz) => {
+                        const isSelected = variantRows.some(
+                          (r) => r.variantName.trim().toUpperCase() === sz.toUpperCase()
+                        )
                         return (
                           <button
                             key={sz}
@@ -937,9 +987,36 @@ export const AddEditProductView: React.FC<{ onStockUpdated?: () => void }> = ({ 
                         )
                       })}
                     </div>
+
+                    {/* Flexible Custom Variant Input Bar */}
+                    <div className="pt-2 border-t border-[#E8D399]/60 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                      <div className="flex-1 relative">
+                        <input
+                          type="text"
+                          placeholder="Type custom variant (e.g. Free Size, 34-Slim, Kids 5Y, Red-XL, Combo Pack)..."
+                          value={customVariantInput}
+                          onChange={(e) => setCustomVariantInput(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault()
+                              handleAddCustomNamedVariant(customVariantInput)
+                            }
+                          }}
+                          className="w-full h-8 px-3 rounded-lg border border-gray-300 bg-white text-xs font-semibold text-gray-900 placeholder:text-gray-400 focus:border-[#0A0A0A] outline-none"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleAddCustomNamedVariant(customVariantInput)}
+                        disabled={!customVariantInput.trim()}
+                        className="h-8 px-3.5 rounded-lg bg-[#0A0A0A] text-[#D4AF37] text-xs font-bold hover:bg-[#1A1A1A] disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-all flex items-center justify-center gap-1.5 shrink-0"
+                      >
+                        <Plus size={13} /> Add Custom
+                      </button>
+                    </div>
                   </div>
 
-                  {/* HTML Datalist for Standard Partitioned Sizes */}
+                  {/* HTML Datalist for Standard and Special Sizes */}
                   <datalist id="standard-clothing-sizes">
                     {STANDARD_LETTER_SIZES.map((s) => (
                       <option key={`alpha-${s}`} value={s}>
@@ -949,6 +1026,11 @@ export const AddEditProductView: React.FC<{ onStockUpdated?: () => void }> = ({ 
                     {STANDARD_NUMERIC_SIZES.map((s) => (
                       <option key={`num-${s}`} value={s}>
                         Standard Numeric Size: {s}
+                      </option>
+                    ))}
+                    {STANDARD_SPECIAL_SIZES.map((s) => (
+                      <option key={`special-${s}`} value={s}>
+                        Special Variant / Size: {s}
                       </option>
                     ))}
                   </datalist>
@@ -962,11 +1044,20 @@ export const AddEditProductView: React.FC<{ onStockUpdated?: () => void }> = ({ 
                       onClick={handleAddVariantRow}
                       className="px-3 py-1 rounded-lg bg-[#0A0A0A] text-[#D4AF37] text-xs font-black flex items-center gap-1 hover:bg-[#1A1A1A] cursor-pointer"
                     >
-                      <Plus size={12} /> Add Custom Variant
+                      <Plus size={12} /> Add Blank Variant Row
                     </button>
                   </div>
 
-                  <div className="space-y-2.5">
+                  {variantRows.length === 0 ? (
+                    <div className="p-6 border-2 border-dashed border-gray-200 rounded-xl text-center bg-[#FAFAF8] space-y-1.5">
+                      <Boxes size={26} className="mx-auto text-gray-400" />
+                      <p className="text-xs font-bold text-gray-700">No Variant SKUs Added Yet</p>
+                      <p className="text-[11px] text-gray-500 max-w-md mx-auto">
+                        Click quick-add size chips above, type any custom variant name (e.g. Free Size, 34-Slim), or click <span className="font-semibold text-gray-700">+ Add Blank Variant Row</span>.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2.5">
                     {variantRows.map((v) => (
                       <div
                         key={v.id}
@@ -1057,7 +1148,8 @@ export const AddEditProductView: React.FC<{ onStockUpdated?: () => void }> = ({ 
                         </div>
                       </div>
                     ))}
-                  </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
