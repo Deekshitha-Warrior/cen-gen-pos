@@ -28,6 +28,7 @@ dist-ssr
 *.sw?
 
 .vercel
+scratch/
 screenshots/
 fix*.cjs
 gen_logo.cjs
