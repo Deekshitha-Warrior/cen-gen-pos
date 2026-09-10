@@ -42,7 +42,7 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
   defaultQuantity = 1,
 }) => {
   const presets = getAvailablePresets()
-  const [quantity, setQuantity] = useState<number | ''>(defaultQuantity)
+  const [quantity, setQuantity] = useState<string>(String(defaultQuantity || 1))
   const [selectedPreset, setSelectedPreset] = useState<LabelSizePreset>(presets[0] || { name: 'Thermal Standard', widthMm: 50, heightMm: 25 })
   const [copied, setCopied] = useState(false)
 
@@ -111,7 +111,8 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
     const barcodeBoxHeightMm = (selectedPreset.heightMm * 0.50).toFixed(1) + 'mm'
 
     // Build standalone HTML for the printed stickers with strict thermal proportions
-    const validQuantity = typeof quantity === 'number' && quantity > 0 ? quantity : (parseInt(String(quantity), 10) || 1)
+    const parsedQty = parseInt(quantity.trim(), 10)
+    const validQuantity = !isNaN(parsedQty) && parsedQty > 0 ? parsedQty : 1
     const stickersHtml = Array.from({ length: Math.max(1, validQuantity) })
       .map(
         () => `
@@ -372,35 +373,26 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => setQuantity((q) => Math.max(1, (Number(q) || 1) - 1))}
+                  onClick={() => setQuantity((q) => String(Math.max(1, (parseInt(q, 10) || 1) - 1)))}
                   className="w-10 h-10 rounded-xl bg-gray-100 hover:bg-gray-200 text-black font-black text-lg flex items-center justify-center border border-gray-300 cursor-pointer"
                 >
                   -
                 </button>
                 <input
-                  type="number"
-                  min="1"
-                  max="500"
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  placeholder="1"
                   value={quantity}
                   onChange={(e) => {
-                    const val = e.target.value
-                    if (val === '') {
-                      setQuantity('')
-                    } else {
-                      const parsed = parseInt(val, 10)
-                      setQuantity(isNaN(parsed) ? '' : Math.max(0, parsed))
-                    }
-                  }}
-                  onBlur={() => {
-                    if (quantity === '' || Number(quantity) < 1) {
-                      setQuantity(1)
-                    }
+                    const clean = e.target.value.replace(/[^0-9]/g, '')
+                    setQuantity(clean)
                   }}
                   className="flex-1 text-center font-black text-lg py-2 rounded-xl border-2 border-[#E8D399] bg-[#FBFAF6] focus:border-[#0A0A0A] focus:bg-white outline-none"
                 />
                 <button
                   type="button"
-                  onClick={() => setQuantity((q) => (Number(q) || 0) + 1)}
+                  onClick={() => setQuantity((q) => String((parseInt(q, 10) || 0) + 1))}
                   className="w-10 h-10 rounded-xl bg-gray-100 hover:bg-gray-200 text-black font-black text-lg flex items-center justify-center border border-gray-300 cursor-pointer"
                 >
                   +
@@ -467,7 +459,7 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
             className="flex items-center gap-1.5 sm:gap-2 px-4 py-2 sm:px-6 sm:py-2.5 rounded-xl bg-[#0A0A0A] border border-[#D4AF37] text-[#D4AF37] font-black hover:bg-[#1A1A1A] transition-all shadow-md cursor-pointer hover:scale-[1.02] text-xs sm:text-sm shrink-0"
           >
             <Printer size={16} />
-            Print {quantity} {quantity === 1 ? 'Sticker' : 'Stickers'}
+            Print {quantity || '1'} {quantity === '1' ? 'Sticker' : 'Stickers'}
           </button>
         </div>
       </div>

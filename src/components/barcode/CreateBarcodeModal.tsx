@@ -92,7 +92,7 @@ export const CreateBarcodeModal: React.FC<CreateBarcodeModalProps> = ({
   const [selectedVariant, setSelectedVariant] = useState<ProductVariant | null>(null)
 
   const [itemCode, setItemCode] = useState('')
-  const [noOfLabels, setNoOfLabels] = useState<number | ''>(2)
+  const [noOfLabels, setNoOfLabels] = useState<string>('1')
   const [header, setHeader] = useState(BRAND_EN)
   const [line1, setLine1] = useState('')
   const [line2, setLine2] = useState('')
@@ -253,11 +253,8 @@ export const CreateBarcodeModal: React.FC<CreateBarcodeModalProps> = ({
       return
     }
 
-    const finalLabels = typeof noOfLabels === 'number' && noOfLabels > 0 ? noOfLabels : (parseInt(String(noOfLabels), 10) || 1)
-    if (finalLabels <= 0) {
-      setStatusMessage({ type: 'error', text: 'Number of labels must be at least 1' })
-      return
-    }
+    const parsedLabels = parseInt(noOfLabels.trim(), 10)
+    const finalLabels = !isNaN(parsedLabels) && parsedLabels > 0 ? parsedLabels : 1
 
     // Check if already present in the current queue
     const alreadyInQueue = queue.some(
@@ -293,7 +290,7 @@ export const CreateBarcodeModal: React.FC<CreateBarcodeModalProps> = ({
     setStatusMessage(null)
 
     // Reset some inputs for rapid entry
-    setNoOfLabels(2)
+    setNoOfLabels('1')
   }
 
   const handleRemoveQueueItem = (id: string) => {
@@ -853,7 +850,7 @@ export const CreateBarcodeModal: React.FC<CreateBarcodeModalProps> = ({
                               barcodeValue: `CLAD${Math.floor(1000000 + Math.random() * 9000000)}`,
                               price: v.price || selectedProduct.price,
                               costPrice: selectedProduct.cost_price || 0,
-                              noOfLabels: typeof noOfLabels === 'number' && noOfLabels > 0 ? noOfLabels : 2,
+                              noOfLabels: parseInt(noOfLabels, 10) || 1,
                               header: header || BRAND_EN,
                               line1: selectedProduct.name,
                               line2: `Size: ${v.variantName}`,
@@ -906,23 +903,14 @@ export const CreateBarcodeModal: React.FC<CreateBarcodeModalProps> = ({
                         No of Labels <span className="text-red-500">*</span>
                       </label>
                       <input
-                        type="number"
-                        min="1"
-                        required
+                        type="text"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        placeholder="1"
                         value={noOfLabels}
                         onChange={(e) => {
-                          const val = e.target.value
-                          if (val === '') {
-                            setNoOfLabels('')
-                          } else {
-                            const parsed = parseInt(val, 10)
-                            setNoOfLabels(isNaN(parsed) ? '' : Math.max(0, parsed))
-                          }
-                        }}
-                        onBlur={() => {
-                          if (noOfLabels === '' || Number(noOfLabels) < 1) {
-                            setNoOfLabels(1)
-                          }
+                          const clean = e.target.value.replace(/[^0-9]/g, '')
+                          setNoOfLabels(clean)
                         }}
                         className="w-full h-10 px-3 rounded-xl border border-gray-300 bg-white text-xs font-black text-gray-900 outline-none focus:border-[#0A0A0A]"
                       />
@@ -1180,21 +1168,18 @@ export const CreateBarcodeModal: React.FC<CreateBarcodeModalProps> = ({
                           </td>
                           <td className="p-3">
                             <input
-                              type="number"
-                              min="1"
+                              type="text"
+                              inputMode="numeric"
+                              pattern="[0-9]*"
+                              placeholder="1"
                               value={item.noOfLabels === 0 || (item.noOfLabels as unknown) === '' ? '' : item.noOfLabels}
                               onChange={(e) => {
-                                const val = e.target.value
+                                const clean = e.target.value.replace(/[^0-9]/g, '')
                                 handleUpdateQueueItem(
                                   item.id,
                                   'noOfLabels',
-                                  val === '' ? ('' as unknown as number) : (parseInt(val, 10) || 0)
+                                  clean === '' ? ('' as unknown as number) : (parseInt(clean, 10) || 0)
                                 )
-                              }}
-                              onBlur={() => {
-                                if (!item.noOfLabels || item.noOfLabels < 1) {
-                                  handleUpdateQueueItem(item.id, 'noOfLabels', 1)
-                                }
                               }}
                               className="w-20 h-8 px-2 rounded-lg border border-gray-300 font-black text-center text-xs outline-none focus:border-[#0A0A0A]"
                             />
