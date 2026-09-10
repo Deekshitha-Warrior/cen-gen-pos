@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
+import { createPortal } from 'react-dom'
 import { CalendarDays, CheckCircle2, Clock3, Download, Eye, FileText, MessageCircle, PackageCheck, Printer, RefreshCw, Search, X } from 'lucide-react'
 import { supabase, isSupabaseConfigured } from '../lib/supabase'
 import { formatCurrency } from '../lib/retail'
@@ -88,6 +89,33 @@ export default function AdvanceOrders({ onOrderCompleted }: AdvanceOrdersProps =
   }
 
   const removeCoupon = () => { setAppliedCoupon(null); setCouponInput(''); setCouponError('') }
+
+  // Close modals or drawer on Escape key
+  useEffect(() => {
+    if (!selected && !createOpen && !paymentOrder) return
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (selected) setSelected(null)
+        else if (paymentOrder) setPaymentOrder(null)
+        else if (createOpen) setCreateOpen(false)
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [selected, createOpen, paymentOrder])
+
+  // Prevent background scroll when modal or drawer is open
+  useEffect(() => {
+    const isAnyOpen = !!(selected || createOpen || paymentOrder)
+    if (isAnyOpen) {
+      document.body.style.overflow = 'hidden'
+    } else {
+      document.body.style.overflow = ''
+    }
+    return () => {
+      document.body.style.overflow = ''
+    }
+  }, [selected, createOpen, paymentOrder])
 
   const openDetails = async (order: AdvanceOrder) => {
     setSelected(order); setTimeline([]); setPayments([])
@@ -341,10 +369,285 @@ export default function AdvanceOrders({ onOrderCompleted }: AdvanceOrdersProps =
       </div>
     </div>
 
-    {createOpen && <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/55 p-4"><form onSubmit={create} className="max-h-[94vh] w-full max-w-4xl overflow-hidden overflow-y-auto rounded-3xl bg-white p-6 shadow-2xl"><div className="mb-5 flex items-center justify-between"><div><h3 className="text-xl font-black">Create Advance Order</h3><p className="text-xs text-amber-700">Creates an advance receipt only - no revenue or final invoice.</p></div><button type="button" onClick={() => setCreateOpen(false)}><X/></button></div><div className="grid gap-4 md:grid-cols-2"><Field label="Customer Name *"><input required className={inputClass} value={form.customerName} onChange={e=>setForm({...form,customerName:e.target.value})}/></Field><Field label="Phone Number *"><input required className={inputClass} value={form.phone} onChange={e=>setForm({...form,phone:e.target.value})}/></Field><Field label="Address"><textarea className={inputClass} value={form.address} onChange={e=>setForm({...form,address:e.target.value})}/></Field><Field label="Product Name *"><input required list="advance-products" className={inputClass} value={form.productName} onChange={e=>{const product=products.find(p=>p.name===e.target.value);setForm({...form,productName:e.target.value,category:product?.category||form.category})}}/><datalist id="advance-products">{products.map(p=><option key={p.id} value={p.name}/>)}</datalist></Field><Field label="Category"><input className={inputClass} value={form.category} onChange={e=>setForm({...form,category:e.target.value})}/></Field><Field label="Description"><textarea className={inputClass} value={form.description} onChange={e=>setForm({...form,description:e.target.value})}/></Field><Field label="Total Order Amount *"><input required min="0.01" step="0.01" type="number" className={inputClass} value={form.totalAmount} onChange={e=>setForm({...form,totalAmount:e.target.value})}/></Field><Field label="Deposit Amount Received *"><input required min="0" step="0.01" type="number" className={inputClass} value={form.depositAmount} onChange={e=>setForm({...form,depositAmount:e.target.value})}/></Field><Field label="Remaining Balance (automatic)"><div className="rounded-xl bg-violet-50 px-4 py-3 font-black text-violet-800">{formatCurrency(Math.max(0, Number(form.totalAmount||0)-Number(form.depositAmount||0)))}</div></Field><Field label="Deposit Payment Method"><select className={inputClass} value={form.paymentMethod} onChange={e=>setForm({...form,paymentMethod:e.target.value as AdvancePaymentMethod})}><option value="cash">Cash</option><option value="upi">QR</option><option value="card">Card</option></select></Field><Field label="Expected Delivery Date *"><input required type="date" className={inputClass} value={form.expectedDeliveryDate} onChange={e=>setForm({...form,expectedDeliveryDate:e.target.value})}/></Field><Field label="Order Status"><select disabled className={inputClass} value="pending_deposit"><option value="pending_deposit">Pending Deposit</option></select></Field>      <div className="md:col-span-2"><Field label="Reference Number"><input className={inputClass} value={form.reference_number} onChange={e=>setForm({...form,reference_number:e.target.value})} placeholder="e.g. PO-001, booking ref (optional)"/></Field></div><div className="md:col-span-2"><Field label="Remarks"><textarea className={inputClass} value={form.remarks} onChange={e=>setForm({...form,remarks:e.target.value})} placeholder="e.g. special instructions, colour, size notes"/></Field></div></div><div className="mt-6 flex justify-end gap-3"><button type="button" onClick={()=>setCreateOpen(false)} className="rounded-xl border px-5 py-2.5 font-bold">Cancel</button><button disabled={saving} className="rounded-xl bg-[#7e22ce] px-5 py-2.5 font-black text-white disabled:opacity-50">{saving?'Creating...':'Create & Save Advance Receipt'}</button></div></form></div>}
+    {createOpen && createPortal(
+      <div className="fixed inset-0 top-0 left-0 right-0 bottom-0 w-screen h-screen h-[100dvh] z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+        <form onSubmit={create} className="max-h-[92vh] w-full max-w-4xl overflow-hidden overflow-y-auto rounded-3xl bg-white p-6 shadow-2xl border border-[#E8D399]">
+          <div className="mb-5 flex items-center justify-between">
+            <div>
+              <h3 className="text-xl font-black text-[#0A0A0A]">Create Advance Order</h3>
+              <p className="text-xs text-amber-700">Creates an advance receipt only - no revenue or final invoice.</p>
+            </div>
+            <button type="button" onClick={() => setCreateOpen(false)} className="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-700 transition cursor-pointer">
+              <X size={18} />
+            </button>
+          </div>
+          <div className="grid gap-4 md:grid-cols-2">
+            <Field label="Customer Name *"><input required className={inputClass} value={form.customerName} onChange={e=>setForm({...form,customerName:e.target.value})}/></Field>
+            <Field label="Phone Number *"><input required className={inputClass} value={form.phone} onChange={e=>setForm({...form,phone:e.target.value})}/></Field>
+            <Field label="Address"><textarea className={inputClass} value={form.address} onChange={e=>setForm({...form,address:e.target.value})}/></Field>
+            <Field label="Product Name *"><input required list="advance-products" className={inputClass} value={form.productName} onChange={e=>{const product=products.find(p=>p.name===e.target.value);setForm({...form,productName:e.target.value,category:product?.category||form.category})}}/><datalist id="advance-products">{products.map(p=><option key={p.id} value={p.name}/>)}</datalist></Field>
+            <Field label="Category"><input className={inputClass} value={form.category} onChange={e=>setForm({...form,category:e.target.value})}/></Field>
+            <Field label="Description"><textarea className={inputClass} value={form.description} onChange={e=>setForm({...form,description:e.target.value})}/></Field>
+            <Field label="Total Order Amount *"><input required min="0.01" step="0.01" type="number" className={inputClass} value={form.totalAmount} onChange={e=>setForm({...form,totalAmount:e.target.value})}/></Field>
+            <Field label="Deposit Amount Received *"><input required min="0" step="0.01" type="number" className={inputClass} value={form.depositAmount} onChange={e=>setForm({...form,depositAmount:e.target.value})}/></Field>
+            <Field label="Remaining Balance (automatic)"><div className="rounded-xl bg-violet-50 px-4 py-3 font-black text-violet-800">{formatCurrency(Math.max(0, Number(form.totalAmount||0)-Number(form.depositAmount||0)))}</div></Field>
+            <Field label="Deposit Payment Method"><select className={inputClass} value={form.paymentMethod} onChange={e=>setForm({...form,paymentMethod:e.target.value as AdvancePaymentMethod})}><option value="cash">Cash</option><option value="upi">QR</option><option value="card">Card</option></select></Field>
+            <Field label="Expected Delivery Date *"><input required type="date" className={inputClass} value={form.expectedDeliveryDate} onChange={e=>setForm({...form,expectedDeliveryDate:e.target.value})}/></Field>
+            <Field label="Order Status"><select disabled className={inputClass} value="pending_deposit"><option value="pending_deposit">Pending Deposit</option></select></Field>
+            <div className="md:col-span-2"><Field label="Reference Number"><input className={inputClass} value={form.reference_number} onChange={e=>setForm({...form,reference_number:e.target.value})} placeholder="e.g. PO-001, booking ref (optional)"/></Field></div>
+            <div className="md:col-span-2"><Field label="Remarks"><textarea className={inputClass} value={form.remarks} onChange={e=>setForm({...form,remarks:e.target.value})} placeholder="e.g. special instructions, colour, size notes"/></Field></div>
+          </div>
+          <div className="mt-6 flex justify-end gap-3">
+            <button type="button" onClick={()=>setCreateOpen(false)} className="rounded-xl border px-5 py-2.5 font-bold cursor-pointer hover:bg-gray-50 transition">Cancel</button>
+            <button disabled={saving} className="rounded-xl bg-[#7e22ce] px-5 py-2.5 font-black text-white shadow-md disabled:opacity-50 cursor-pointer hover:bg-[#6b1cb1] transition">{saving?'Creating...':'Create & Save Advance Receipt'}</button>
+          </div>
+        </form>
+      </div>,
+      document.body
+    )}
 
-    {paymentOrder && <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/55 p-4"><form onSubmit={receivePayment} className="w-full max-w-md overflow-hidden rounded-3xl bg-white p-6 shadow-2xl"><div className="mb-5 flex items-start justify-between"><div><p className="text-xs font-black uppercase tracking-wider text-emerald-600">{paymentOrder.deposit_id}</p><h3 className="text-xl font-black text-[#273126]">Receive Remaining Payment</h3></div><button type="button" onClick={()=>setPaymentOrder(null)} className="shrink-0 text-[#858C83] hover:text-black"><X size={20}/></button></div><div className="mb-6 rounded-2xl bg-emerald-50 py-5 text-center">{(() => { const couponDisc = appliedCoupon ? Math.round(paymentOrder.remaining_balance * (appliedCoupon.percentage / 100) * 100) / 100 : 0; const manualNum = Math.max(0, Number(manualDiscount) || 0); const manualDisc = manualDiscountType === '%' ? Math.round(paymentOrder.remaining_balance * (manualNum / 100) * 100) / 100 : manualNum; const finalAmt = Math.max(0, paymentOrder.remaining_balance - couponDisc - manualDisc); return (<><p className="text-[11px] font-black uppercase tracking-widest text-emerald-600">Remaining Amount</p><p className={`mt-1 font-black text-emerald-800 ${(couponDisc > 0 || manualDisc > 0) ? 'text-xl line-through opacity-60' : 'text-4xl'}`}>{formatCurrency(paymentOrder.remaining_balance)}</p>{(couponDisc > 0 || manualDisc > 0) && (<><div className="mt-2 space-y-0.5 text-xs text-emerald-700">{couponDisc > 0 && <p>Coupon {appliedCoupon!.code} ({appliedCoupon!.percentage}%): -{formatCurrency(couponDisc)}</p>}{manualDisc > 0 && <p>Manual Discount: -{formatCurrency(manualDisc)}</p>}</div><p className="mt-3 text-3xl font-black text-emerald-950">You Pay: {formatCurrency(finalAmt)}</p></>)}</>)})()}</div><div className="space-y-4"><Field label="Coupon Code (Optional)"><div className="flex gap-2">{appliedCoupon ? (<div className="flex flex-1 items-center justify-between rounded-xl bg-violet-50 px-3 py-2.5 text-sm font-black text-violet-700"><span>{appliedCoupon.code} — {appliedCoupon.percentage}% OFF</span><button type="button" onClick={removeCoupon} className="ml-2 text-red-500 hover:text-red-700"><X size={14}/></button></div>) : (<><input list="adv-coupon-list" className={`${inputClass} flex-1`} value={couponInput} onChange={e=>{setCouponInput(e.target.value.toUpperCase());setCouponError('')}} placeholder="Enter code" /><datalist id="adv-coupon-list">{availableCoupons.map(c=><option key={c.code} value={c.code}/>)}</datalist><button type="button" onClick={applyCoupon} className="rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-black text-white hover:bg-violet-700">Apply</button></>)}</div>{couponError && <p className="mt-1 text-xs font-semibold text-red-600">{couponError}</p>}</Field><Field label="Manual Discount"><div className="flex gap-2 items-center"><select value={manualDiscountType} onChange={e=>setManualDiscountType(e.target.value as 'rm'|'%')} className="rounded-xl border border-[#E5E7EB] bg-white px-3 py-2.5 text-sm font-black text-[#273126] outline-none focus:border-[#7e22ce] focus:ring-2 focus:ring-violet-100"><option value="rm">₹</option><option value="%">%</option></select><input type="number" min="0" step="0.01" className={`${inputClass} flex-1`} value={manualDiscount} onChange={e=>setManualDiscount(e.target.value)} placeholder="0" /></div></Field><Field label="Payment Method"><select className={inputClass} value={paymentForm.method} onChange={e=>setPaymentForm({...paymentForm,method:e.target.value as AdvancePaymentMethod})}><option value="cash">Cash</option><option value="upi">QR</option><option value="card">Card</option></select></Field><Field label="Payment Notes"><textarea className={inputClass} value={paymentForm.remarks} onChange={e=>setPaymentForm({...paymentForm,remarks:e.target.value})} placeholder="Notes about this payment (optional)"/></Field><p className="mt-2 rounded-xl bg-amber-50 p-3 text-[11px] font-semibold text-amber-800">Confirmation marks the order Completed, creates one official invoice, and recognizes the full {formatCurrency(paymentOrder.total_amount)} as revenue.</p><button disabled={saving} className="mt-5 w-full rounded-xl bg-emerald-600 py-3.5 font-black text-white shadow-lg shadow-emerald-600/30 transition-transform active:scale-95 disabled:opacity-50">{saving?'Processing...':'Confirm Final Payment'}</button></div></form></div>}
+    {paymentOrder && createPortal(
+      <div className="fixed inset-0 top-0 left-0 right-0 bottom-0 w-screen h-screen h-[100dvh] z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+        <form onSubmit={receivePayment} className="w-full max-w-md max-h-[92vh] overflow-hidden overflow-y-auto rounded-3xl bg-white p-6 shadow-2xl border border-[#E8D399]">
+          <div className="mb-5 flex items-start justify-between">
+            <div>
+              <p className="text-xs font-black uppercase tracking-wider text-emerald-600 font-mono">{paymentOrder.deposit_id}</p>
+              <h3 className="text-xl font-black text-[#273126]">Receive Remaining Payment</h3>
+            </div>
+            <button type="button" onClick={()=>setPaymentOrder(null)} className="w-7 h-7 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-700 transition cursor-pointer">
+              <X size={16}/>
+            </button>
+          </div>
+          <div className="mb-6 rounded-2xl bg-emerald-50 py-5 text-center">
+            {(() => {
+              const couponDisc = appliedCoupon ? Math.round(paymentOrder.remaining_balance * (appliedCoupon.percentage / 100) * 100) / 100 : 0;
+              const manualNum = Math.max(0, Number(manualDiscount) || 0);
+              const manualDisc = manualDiscountType === '%' ? Math.round(paymentOrder.remaining_balance * (manualNum / 100) * 100) / 100 : manualNum;
+              const finalAmt = Math.max(0, paymentOrder.remaining_balance - couponDisc - manualDisc);
+              return (
+                <>
+                  <p className="text-[11px] font-black uppercase tracking-widest text-emerald-600">Remaining Amount</p>
+                  <p className={`mt-1 font-black text-emerald-800 ${(couponDisc > 0 || manualDisc > 0) ? 'text-xl line-through opacity-60' : 'text-4xl'}`}>{formatCurrency(paymentOrder.remaining_balance)}</p>
+                  {(couponDisc > 0 || manualDisc > 0) && (
+                    <>
+                      <div className="mt-2 space-y-0.5 text-xs text-emerald-700">
+                        {couponDisc > 0 && <p>Coupon {appliedCoupon!.code} ({appliedCoupon!.percentage}%): -{formatCurrency(couponDisc)}</p>}
+                        {manualDisc > 0 && <p>Manual Discount: -{formatCurrency(manualDisc)}</p>}
+                      </div>
+                      <p className="mt-3 text-3xl font-black text-emerald-950">You Pay: {formatCurrency(finalAmt)}</p>
+                    </>
+                  )}
+                </>
+              )
+            })()}
+          </div>
+          <div className="space-y-4">
+            <Field label="Coupon Code (Optional)">
+              <div className="flex gap-2">
+                {appliedCoupon ? (
+                  <div className="flex flex-1 items-center justify-between rounded-xl bg-violet-50 px-3 py-2.5 text-sm font-black text-violet-700">
+                    <span>{appliedCoupon.code} — {appliedCoupon.percentage}% OFF</span>
+                    <button type="button" onClick={removeCoupon} className="ml-2 text-red-500 hover:text-red-700 cursor-pointer"><X size={14}/></button>
+                  </div>
+                ) : (
+                  <>
+                    <input list="adv-coupon-list" className={`${inputClass} flex-1`} value={couponInput} onChange={e=>{setCouponInput(e.target.value.toUpperCase());setCouponError('')}} placeholder="Enter code" />
+                    <datalist id="adv-coupon-list">{availableCoupons.map(c=><option key={c.code} value={c.code}/>)}</datalist>
+                    <button type="button" onClick={applyCoupon} className="rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-black text-white hover:bg-violet-700 cursor-pointer transition">Apply</button>
+                  </>
+                )}
+              </div>
+              {couponError && <p className="mt-1 text-xs font-semibold text-red-600">{couponError}</p>}
+            </Field>
+            <Field label="Manual Discount">
+              <div className="flex gap-2 items-center">
+                <select value={manualDiscountType} onChange={e=>setManualDiscountType(e.target.value as 'rm'|'%')} className="rounded-xl border border-[#E5E7EB] bg-white px-3 py-2.5 text-sm font-black text-[#273126] outline-none focus:border-[#7e22ce] focus:ring-2 focus:ring-violet-100 cursor-pointer">
+                  <option value="rm">₹</option>
+                  <option value="%">%</option>
+                </select>
+                <input type="number" min="0" step="0.01" className={`${inputClass} flex-1`} value={manualDiscount} onChange={e=>setManualDiscount(e.target.value)} placeholder="0" />
+              </div>
+            </Field>
+            <Field label="Payment Method">
+              <select className={inputClass} value={paymentForm.method} onChange={e=>setPaymentForm({...paymentForm,method:e.target.value as AdvancePaymentMethod})}>
+                <option value="cash">Cash</option>
+                <option value="upi">QR</option>
+                <option value="card">Card</option>
+              </select>
+            </Field>
+            <Field label="Payment Notes">
+              <textarea className={inputClass} value={paymentForm.remarks} onChange={e=>setPaymentForm({...paymentForm,remarks:e.target.value})} placeholder="Notes about this payment (optional)"/>
+            </Field>
+            <p className="mt-2 rounded-xl bg-amber-50 p-3 text-[11px] font-semibold text-amber-800">Confirmation marks the order Completed, creates one official invoice, and recognizes the full {formatCurrency(paymentOrder.total_amount)} as revenue.</p>
+            <button disabled={saving} className="mt-5 w-full rounded-xl bg-emerald-600 py-3.5 font-black text-white shadow-lg shadow-emerald-600/30 transition-transform active:scale-95 disabled:opacity-50 cursor-pointer hover:bg-emerald-700">
+              {saving?'Processing...':'Confirm Final Payment'}
+            </button>
+          </div>
+        </form>
+      </div>,
+      document.body
+    )}
 
-    {selected && <div className="fixed inset-0 z-[75] flex justify-end bg-black/45"><div className="h-full w-full max-w-xl overflow-y-auto bg-white p-6 shadow-2xl"><div className="flex items-start justify-between"><div><p className="text-xs font-black text-violet-600">{selected.deposit_id}</p><h3 className="text-2xl font-black">Order Details</h3></div><button onClick={()=>setSelected(null)}><X/></button></div><div className="mt-5 grid grid-cols-2 gap-3">{[['Customer',selected.customer_name],['Phone',selected.phone],['Address',selected.address||'-'],['Product',selected.product_name],['Category',selected.category||'-'],['Total',formatCurrency(selected.total_amount)],['Deposit Paid',formatCurrency(selected.deposit_amount)],['Remaining Balance',formatCurrency(selected.remaining_balance)],['Delivery Date',new Date(`${selected.expected_delivery_date}T00:00:00`).toLocaleDateString('en-IN')],['Created Date',new Date(selected.created_at).toLocaleDateString('en-IN')],['Created Time',new Date(selected.created_at).toLocaleTimeString('en-IN')],['Created By',selected.created_by_name||'-'],['Current Status',STATUS_LABELS[selected.status]],['Invoice Number',selected.invoice_number||'Not generated'],['Reference No',selected.reference_number||'—']].map(([k,v])=><div key={k} className="rounded-xl bg-[#F8F7F4] p-3"><p className="text-[10px] font-black uppercase text-[#858C83]">{k}</p><p className="mt-1 break-words text-sm font-bold">{v}</p></div>)}</div>{selected.remarks&&<div className="mt-3 rounded-xl border border-violet-200 bg-violet-50 p-3"><p className="text-[10px] font-black uppercase text-violet-500">Remarks</p><p className="mt-1 text-sm text-[#273126]">{selected.remarks}</p></div>}{selected.description&&<div className="mt-3 rounded-xl border p-3"><p className="text-[10px] font-black uppercase text-[#858C83]">Description</p><p className="text-sm">{selected.description}</p></div>}<div className="mt-6"><h4 className="font-black">Quick Timeline Updates</h4><div className="mt-2 flex flex-wrap gap-2">{[['tailoring_started','Tailoring Started'],['tailoring_completed','Tailoring Completed'],['customer_contacted','Customer Contacted'],['delivered','Delivered']].map(([type,label])=><button key={type} onClick={()=>void addEvent(selected,type,label)} className="rounded-lg border border-violet-200 px-3 py-2 text-xs font-black text-violet-700">+ {label}</button>)}</div></div><div className="mt-6"><h4 className="font-black">Payment History</h4><div className="mt-2 space-y-2">{payments.map(payment=><div key={payment.id} className="flex justify-between rounded-xl bg-emerald-50 p-3 text-sm"><span className="font-bold capitalize">{payment.payment_type} - {payment.payment_method}</span><span className="font-black">{formatCurrency(Number(payment.amount))}</span></div>)}</div></div><div className="mt-6"><h4 className="font-black">Order Timeline</h4><div className="mt-3 border-l-2 border-violet-200 pl-4">{timeline.map(event=><div key={event.id} className="relative pb-5 before:absolute before:-left-[21px] before:top-1 before:h-3 before:w-3 before:rounded-full before:bg-violet-600"><p className="text-sm font-black">{event.label}</p><p className="text-xs text-[#81887F]">{new Date(event.created_at).toLocaleString('en-IN')}</p>{event.remarks&&<p className="mt-1 text-xs">{event.remarks}</p>}</div>)}</div></div></div></div>}
+    {selected && createPortal(
+      <div className="fixed inset-0 top-0 left-0 right-0 bottom-0 w-screen h-screen h-[100dvh] z-[9999] flex justify-end bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
+        {/* Backdrop click dismiss */}
+        <div className="absolute inset-0" onClick={() => setSelected(null)} />
+
+        {/* Drawer Panel covering full view height */}
+        <div className="relative z-10 h-screen h-[100dvh] w-full max-w-xl bg-white shadow-2xl flex flex-col border-l border-[#E8D399] animate-in slide-in-from-right duration-200">
+          {/* Sticky Drawer Header */}
+          <div className="shrink-0 px-6 py-4 border-b border-gray-200 bg-[#0A0A0A] text-white flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-[#1A1A1A] border border-[#D4AF37] flex items-center justify-center text-[#D4AF37] shrink-0">
+                <FileText size={18} />
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-black text-[#D4AF37] tracking-wider font-mono">{selected.deposit_id}</span>
+                  <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded border ${STATUS_STYLES[selected.status]}`}>
+                    {STATUS_LABELS[selected.status]}
+                  </span>
+                </div>
+                <h3 className="text-base font-black text-white tracking-wide">Order Details</h3>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setSelected(null)}
+              className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition-colors cursor-pointer shrink-0"
+              title="Close (Esc)"
+            >
+              <X size={16} />
+            </button>
+          </div>
+
+          {/* Scrollable Drawer Body */}
+          <div className="flex-1 overflow-y-auto p-6 space-y-6">
+            <div className="grid grid-cols-2 gap-3">
+              {[
+                ['Customer', selected.customer_name],
+                ['Phone', selected.phone],
+                ['Address', selected.address || '-'],
+                ['Product', selected.product_name],
+                ['Category', selected.category || '-'],
+                ['Total', formatCurrency(selected.total_amount)],
+                ['Deposit Paid', formatCurrency(selected.deposit_amount)],
+                ['Remaining Balance', formatCurrency(selected.remaining_balance)],
+                ['Delivery Date', new Date(`${selected.expected_delivery_date}T00:00:00`).toLocaleDateString('en-IN')],
+                ['Created Date', new Date(selected.created_at).toLocaleDateString('en-IN')],
+                ['Created Time', new Date(selected.created_at).toLocaleTimeString('en-IN')],
+                ['Created By', selected.created_by_name || '-'],
+                ['Current Status', STATUS_LABELS[selected.status]],
+                ['Invoice Number', selected.invoice_number || 'Not generated'],
+                ['Reference No', selected.reference_number || '—'],
+              ].map(([k, v]) => (
+                <div key={k} className="rounded-xl bg-[#F8F7F4] p-3 border border-gray-100">
+                  <p className="text-[10px] font-black uppercase text-[#858C83]">{k}</p>
+                  <p className="mt-1 break-words text-sm font-bold text-[#273126]">{v}</p>
+                </div>
+              ))}
+            </div>
+
+            {selected.remarks && (
+              <div className="rounded-xl border border-violet-200 bg-violet-50 p-3.5">
+                <p className="text-[10px] font-black uppercase text-violet-600">Remarks</p>
+                <p className="mt-1 text-sm text-[#273126] font-medium">{selected.remarks}</p>
+              </div>
+            )}
+
+            {selected.description && (
+              <div className="rounded-xl border border-gray-200 bg-gray-50 p-3.5">
+                <p className="text-[10px] font-black uppercase text-[#858C83]">Description</p>
+                <p className="mt-1 text-sm text-gray-800">{selected.description}</p>
+              </div>
+            )}
+
+            <div>
+              <h4 className="text-sm font-black text-gray-900">Quick Timeline Updates</h4>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {[
+                  ['tailoring_started', 'Tailoring Started'],
+                  ['tailoring_completed', 'Tailoring Completed'],
+                  ['customer_contacted', 'Customer Contacted'],
+                  ['delivered', 'Delivered'],
+                ].map(([type, label]) => (
+                  <button
+                    key={type}
+                    type="button"
+                    onClick={() => void addEvent(selected, type, label)}
+                    className="rounded-lg border border-violet-200 bg-violet-50 hover:bg-violet-100 px-3 py-2 text-xs font-black text-violet-700 transition cursor-pointer"
+                  >
+                    + {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <h4 className="text-sm font-black text-gray-900">Payment History</h4>
+              <div className="mt-2 space-y-2">
+                {payments.length === 0 ? (
+                  <p className="text-xs text-gray-400 italic">No payments recorded yet.</p>
+                ) : (
+                  payments.map((payment) => (
+                    <div key={payment.id} className="flex justify-between items-center rounded-xl bg-emerald-50 border border-emerald-100 p-3 text-sm">
+                      <span className="font-bold capitalize text-emerald-900">{payment.payment_type} — {payment.payment_method}</span>
+                      <span className="font-black text-emerald-800">{formatCurrency(Number(payment.amount))}</span>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            <div>
+              <h4 className="text-sm font-black text-gray-900">Order Timeline</h4>
+              <div className="mt-3 border-l-2 border-violet-200 pl-4 space-y-4">
+                {timeline.length === 0 ? (
+                  <p className="text-xs text-gray-400 italic">No timeline events recorded.</p>
+                ) : (
+                  timeline.map((event) => (
+                    <div key={event.id} className="relative pb-2 before:absolute before:-left-[21px] before:top-1.5 before:h-2.5 before:w-2.5 before:rounded-full before:bg-violet-600">
+                      <p className="text-sm font-black text-gray-900">{event.label}</p>
+                      <p className="text-xs text-[#81887F]">{new Date(event.created_at).toLocaleString('en-IN')}</p>
+                      {event.remarks && <p className="mt-1 text-xs text-gray-600 bg-white/70 p-2 rounded-lg border border-gray-100">{event.remarks}</p>}
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Sticky Drawer Footer */}
+          <div className="shrink-0 px-6 py-4 border-t border-gray-200 bg-[#FBFAF6] flex items-center justify-between gap-3">
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => invoiceFile(selected)}
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-gray-200 bg-white text-xs font-bold text-gray-700 hover:bg-gray-100 cursor-pointer transition shadow-xs"
+                title="Download PDF"
+              >
+                <Download size={14} /> PDF
+              </button>
+              <button
+                type="button"
+                onClick={() => selected.status === 'completed' ? whatsappInvoice(selected) : whatsappDepositReceipt(selected)}
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-bold hover:bg-emerald-100 cursor-pointer transition shadow-xs"
+                title="Share via WhatsApp"
+              >
+                <MessageCircle size={14} /> WhatsApp
+              </button>
+            </div>
+            <button
+              type="button"
+              onClick={() => setSelected(null)}
+              className="px-5 py-2 rounded-xl bg-[#0A0A0A] text-white text-xs font-black hover:bg-gray-800 cursor-pointer transition"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      </div>,
+      document.body
+    )}
   </div>
 }

@@ -24,8 +24,8 @@ export function CartDrawer({ open, onClose }: { open: boolean; onClose: () => vo
     <AnimatePresence>
       {open && (
         <>
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} className="fixed inset-0 bg-black/40 z-50 backdrop-blur-sm" />
-          <motion.div initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }} transition={{ type: 'spring', stiffness: 290, damping: 28 }} className="fixed right-0 top-0 h-full w-full max-w-sm bg-white z-50 flex flex-col shadow-2xl">
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} className="fixed inset-0 top-0 left-0 right-0 bottom-0 w-screen h-screen h-[100dvh] bg-black/40 z-50 backdrop-blur-sm" />
+          <motion.div initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }} transition={{ type: 'spring', stiffness: 290, damping: 28 }} className="fixed right-0 top-0 bottom-0 h-screen h-[100dvh] w-full max-w-sm bg-white z-50 flex flex-col shadow-2xl">
             <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
               <div className="flex items-center gap-2">
                 <ShoppingBag className="text-sageDark" size={20} />
@@ -97,8 +97,8 @@ export function FavoritesDrawer({ open, onClose }: { open: boolean; onClose: () 
     <AnimatePresence>
       {open && (
         <>
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} className="fixed inset-0 bg-black/40 z-50 backdrop-blur-sm" />
-          <motion.div initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }} transition={{ type: 'spring', stiffness: 290, damping: 28 }} className="fixed right-0 top-0 h-full w-full max-w-sm bg-white z-50 flex flex-col shadow-2xl">
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} className="fixed inset-0 top-0 left-0 right-0 bottom-0 w-screen h-screen h-[100dvh] bg-black/40 z-50 backdrop-blur-sm" />
+          <motion.div initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }} transition={{ type: 'spring', stiffness: 290, damping: 28 }} className="fixed right-0 top-0 bottom-0 h-screen h-[100dvh] w-full max-w-sm bg-white z-50 flex flex-col shadow-2xl">
             <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
               <h2 className="font-bold text-lg text-textMain font-headline flex items-center gap-2">
                 ❤️ {t('drawer.favs')} <span className="text-sm font-normal text-gray-400">({items.length})</span>
