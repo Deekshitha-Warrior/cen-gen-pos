@@ -1,4 +1,5 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { X, Tag, IndianRupee, AlertCircle, Barcode, Check } from 'lucide-react'
 import { updateItemPrice } from '../../services/productService'
 import type { InventoryStockItem } from '../../services/inventoryService'
@@ -19,13 +20,29 @@ export const QuickPriceModal: React.FC<Props> = ({ isOpen, item, onClose, onSucc
   const [error, setError] = useState('')
 
   // Sync state when item changes
-  React.useEffect(() => {
+  useEffect(() => {
     if (item) {
       setSellingPrice(String(item.price ?? ''))
       setCostPrice(item.purchase_price !== undefined ? String(item.purchase_price) : '')
       setError('')
     }
   }, [item])
+
+  // Close on Escape key & lock body scrolling when open
+  useEffect(() => {
+    if (!isOpen) return
+    const originalOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.body.style.overflow = originalOverflow
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [isOpen, onClose])
 
   if (!isOpen || !item) return null
 
@@ -69,11 +86,12 @@ export const QuickPriceModal: React.FC<Props> = ({ isOpen, item, onClose, onSucc
     }
   }
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
-      <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl overflow-hidden border border-[#E8D399]/50 animate-in fade-in zoom-in-95">
+  return createPortal(
+    <div className="fixed inset-0 top-0 left-0 right-0 bottom-0 w-screen h-screen h-[100dvh] z-[9999] flex items-center justify-center bg-black/75 backdrop-blur-sm p-0 sm:p-4 overflow-hidden animate-in fade-in duration-150">
+      <div className="absolute inset-0" onClick={onClose} />
+      <div className="relative z-10 bg-white rounded-none sm:rounded-2xl w-full max-w-md h-screen h-[100dvh] sm:h-auto sm:max-h-[92vh] shadow-2xl overflow-hidden border-0 sm:border border-[#E8D399]/50 animate-in fade-in zoom-in-95 flex flex-col">
         {/* Header */}
-        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between bg-[#FBFAF6]">
+        <div className="px-4 py-3 sm:px-5 sm:py-4 border-b border-gray-100 flex items-center justify-between bg-[#FBFAF6] shrink-0">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-xl bg-amber-500/10 flex items-center justify-center text-amber-700">
               <Tag className="w-4 h-4" />
@@ -170,7 +188,7 @@ export const QuickPriceModal: React.FC<Props> = ({ isOpen, item, onClose, onSucc
           </div>
 
           {/* Footer Actions */}
-          <div className="pt-2 flex items-center justify-end gap-2">
+          <div className="pt-2 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] flex items-center justify-end gap-2 shrink-0">
             <button
               type="button"
               onClick={onClose}
@@ -198,6 +216,7 @@ export const QuickPriceModal: React.FC<Props> = ({ isOpen, item, onClose, onSucc
           </div>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }

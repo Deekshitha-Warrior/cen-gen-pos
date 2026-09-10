@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import {
   X,
   SlidersHorizontal,
@@ -49,6 +50,22 @@ export const AdjustStockModal: React.FC<AdjustStockModalProps> = ({
       setError('')
     }
   }, [item, isOpen])
+
+  // Close on Escape key & lock body scrolling when open
+  useEffect(() => {
+    if (!isOpen) return
+    const originalOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.body.style.overflow = originalOverflow
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [isOpen, onClose])
 
   if (!isOpen || !item) return null
 
@@ -132,11 +149,12 @@ export const AdjustStockModal: React.FC<AdjustStockModalProps> = ({
     }
   }
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-3 sm:p-4 overflow-hidden">
-      <div className="bg-white rounded-2xl sm:rounded-3xl max-w-lg w-full max-h-[92vh] border border-[#E8D399] shadow-2xl overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-200">
+  return createPortal(
+    <div className="fixed inset-0 top-0 left-0 right-0 bottom-0 w-screen h-screen h-[100dvh] z-[9999] flex items-center justify-center bg-black/75 backdrop-blur-sm p-0 sm:p-4 overflow-hidden animate-in fade-in duration-150">
+      <div className="absolute inset-0" onClick={onClose} />
+      <div className="relative z-10 bg-white rounded-none sm:rounded-3xl max-w-lg w-full h-screen h-[100dvh] sm:h-auto sm:max-h-[92vh] border-0 sm:border border-[#E8D399] shadow-2xl overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-200">
         {/* Header */}
-        <div className="shrink-0 bg-[#0A0A0A] px-5 py-3.5 border-b border-[#D4AF37]/30 flex items-center justify-between text-white">
+        <div className="shrink-0 bg-[#0A0A0A] px-4 py-3 sm:px-5 sm:py-3.5 border-b border-[#D4AF37]/30 flex items-center justify-between text-white">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-lg bg-[#1A1A1A] border border-[#D4AF37] flex items-center justify-center text-[#D4AF37]">
               <SlidersHorizontal size={16} />
@@ -540,7 +558,7 @@ export const AdjustStockModal: React.FC<AdjustStockModalProps> = ({
           </div>
 
           {/* Fixed Footer at the bottom */}
-          <div className="shrink-0 px-5 py-3 bg-[#FBFAF6] border-t border-gray-200 flex items-center justify-end gap-2.5">
+          <div className="shrink-0 px-4 py-3 sm:px-5 sm:py-3 bg-[#FBFAF6] border-t border-gray-200 flex items-center justify-end gap-2.5 pb-[calc(env(safe-area-inset-bottom)+0.75rem)]">
             <button
               type="button"
               onClick={onClose}
@@ -578,6 +596,7 @@ export const AdjustStockModal: React.FC<AdjustStockModalProps> = ({
           </div>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
