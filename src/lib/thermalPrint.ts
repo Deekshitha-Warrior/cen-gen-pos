@@ -27,29 +27,37 @@ export interface ThermalReceiptData {
 }
 
 export function printThermalReceipt(data: ThermalReceiptData) {
-  // Create an iframe to hold the print document
-  const iframe = document.createElement('iframe')
-  iframe.style.position = 'fixed'
-  iframe.style.right = '0'
-  iframe.style.bottom = '0'
-  iframe.style.width = '0'
-  iframe.style.height = '0'
-  iframe.style.border = '0'
-  document.body.appendChild(iframe)
+  try {
+    // Create an isolated print iframe protected from third-party extension observers
+    const iframe = document.createElement('iframe')
+    iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden;'
+    iframe.setAttribute('aria-hidden', 'true')
+    iframe.setAttribute('tabindex', '-1')
+    iframe.setAttribute('data-gramm', 'false')
+    iframe.setAttribute('data-gramm_editor', 'false')
+    iframe.setAttribute('data-enable-grammarly', 'false')
+    iframe.setAttribute('spellcheck', 'false')
+    document.body.appendChild(iframe)
 
-  const doc = iframe.contentWindow?.document
-  if (!doc) return
+    const doc = iframe.contentWindow?.document
+    if (!doc) {
+      if (iframe.parentNode) iframe.parentNode.removeChild(iframe)
+      return
+    }
 
-  const dateStr = (() => {
-    try { return new Date(data.date).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) }
-    catch { return new Date().toLocaleString('en-IN') }
-  })()
+    const dateStr = (() => {
+      try { return new Date(data.date).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) }
+      catch { return new Date().toLocaleString('en-IN') }
+    })()
 
-  const html = `
-    <!DOCTYPE html>
-    <html>
-      <head>
-        <title>Receipt - ${data.invoiceNo}</title>
+    const html = `
+      <!DOCTYPE html>
+      <html lang="en" data-gramm="false" data-gramm_editor="false" data-enable-grammarly="false" spellcheck="false">
+        <head>
+          <meta charset="UTF-8">
+          <meta name="grammarly" content="off">
+          <meta name="robots" content="noindex,nofollow">
+          <title>Receipt - ${data.invoiceNo}</title>
         <style>
           @page {
             margin: 0;
@@ -168,18 +176,35 @@ export function printThermalReceipt(data: ThermalReceiptData) {
     </html>
   `
 
-  doc.open()
-  doc.write(html)
-  doc.close()
+    doc.open()
+    doc.write(html)
+    doc.close()
 
-  // Wait for resources to load
-  setTimeout(() => {
-    iframe.contentWindow?.focus()
-    iframe.contentWindow?.print()
+    const cleanup = () => {
+      try {
+        if (iframe.parentNode) {
+          iframe.parentNode.removeChild(iframe)
+        }
+      } catch {}
+    }
 
-    // Cleanup
+    // Wait for resources to load, then print safely
     setTimeout(() => {
-      document.body.removeChild(iframe)
-    }, 1000)
-  }, 250)
+      try {
+        if (iframe.contentWindow) {
+          iframe.contentWindow.onbeforeunload = null
+          iframe.contentWindow.onunload = null
+          iframe.contentWindow.onafterprint = cleanup
+          iframe.contentWindow.focus()
+          iframe.contentWindow.print()
+        }
+      } catch (printErr) {
+        console.warn('[thermalPrint] Print execution error:', printErr)
+      } finally {
+        setTimeout(cleanup, 2000)
+      }
+    }, 250)
+  } catch (err) {
+    console.warn('[thermalPrint] Failed to print receipt:', err)
+  }
 }

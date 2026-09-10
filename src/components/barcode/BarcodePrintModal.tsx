@@ -71,17 +71,22 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
   }
 
   const handlePrint = () => {
-    const iframe = document.createElement('iframe')
-    iframe.style.position = 'fixed'
-    iframe.style.right = '0'
-    iframe.style.bottom = '0'
-    iframe.style.width = '0'
-    iframe.style.height = '0'
-    iframe.style.border = '0'
-    document.body.appendChild(iframe)
+    try {
+      const iframe = document.createElement('iframe')
+      iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden;'
+      iframe.setAttribute('aria-hidden', 'true')
+      iframe.setAttribute('tabindex', '-1')
+      iframe.setAttribute('data-gramm', 'false')
+      iframe.setAttribute('data-gramm_editor', 'false')
+      iframe.setAttribute('data-enable-grammarly', 'false')
+      iframe.setAttribute('spellcheck', 'false')
+      document.body.appendChild(iframe)
 
-    const doc = iframe.contentWindow?.document
-    if (!doc) return
+      const doc = iframe.contentWindow?.document
+      if (!doc) {
+        if (iframe.parentNode) iframe.parentNode.removeChild(iframe)
+        return
+      }
 
     const fullTitle = `${productName}${variantName ? ` (${variantName})` : ''}`
 
@@ -248,7 +253,7 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
             }
           </style>
         </head>
-        <body>
+        <body data-gramm="false">
           ${stickersHtml}
           <script>
             window.onload = function() {
@@ -263,8 +268,10 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
                 displayValue: true
               });
               setTimeout(function() {
-                window.focus();
-                window.print();
+                try {
+                  window.focus();
+                  window.print();
+                } catch (e) {}
               }, 300);
             }
           </script>
@@ -276,10 +283,27 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
     doc.write(html)
     doc.close()
 
-    setTimeout(() => {
-      document.body.removeChild(iframe)
-    }, 2000)
+    const cleanup = () => {
+      try {
+        if (iframe.parentNode) {
+          iframe.parentNode.removeChild(iframe)
+        }
+      } catch {}
+    }
+
+    try {
+      if (iframe.contentWindow) {
+        iframe.contentWindow.onbeforeunload = null
+        iframe.contentWindow.onunload = null
+        iframe.contentWindow.onafterprint = cleanup
+      }
+    } catch {}
+
+    setTimeout(cleanup, 2500)
+  } catch (err) {
+    console.warn('[BarcodePrintModal] Failed to execute print:', err)
   }
+}
 
   return createPortal(
     <div className="fixed inset-0 top-0 left-0 right-0 bottom-0 w-screen h-screen h-[100dvh] z-[9999] flex items-center justify-center bg-black/75 backdrop-blur-sm p-0 sm:p-4 overflow-hidden animate-in fade-in duration-150">

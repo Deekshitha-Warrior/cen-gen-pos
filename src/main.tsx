@@ -24,7 +24,10 @@ if (typeof window !== 'undefined') {
       errorMsg.includes('A listener indicated an asynchronous response') ||
       errorMsg.includes('ResizeObserver loop completed with undelivered notifications') ||
       errorMsg.includes('ResizeObserver loop limit exceeded') ||
-      errorMsg.includes('Non-Error promise rejection captured')
+      errorMsg.includes('Non-Error promise rejection captured') ||
+      errorMsg.includes('Permissions policy violation: unload') ||
+      errorMsg.includes('unload is not allowed in this document') ||
+      errorMsg.includes('Using DEFAULT root logger')
     )
   }
 

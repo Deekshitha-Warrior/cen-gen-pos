@@ -40,20 +40,34 @@ export function advanceReceiptPdf(order: AdvanceOrder) {
 }
 
 export function printAdvanceReceipt(order: AdvanceOrder) {
-  const frame = document.createElement('iframe')
-  frame.style.cssText = 'position:fixed;width:0;height:0;border:0;right:0;bottom:0'
-  document.body.appendChild(frame)
-  const doc = frame.contentWindow?.document
-  if (!doc) return
-  const paymentLabel = order.final_payment_method
-    ? (order.final_payment_method === 'upi' ? 'UPI / QR' : order.final_payment_method.toUpperCase())
-    : ''
-  const depositPayment = (() => {
-    // Show payment method if available
-    return paymentLabel || 'Cash'
-  })()
-  const html = `<!doctype html><html><head><title>Advance Receipt ${esc(order.deposit_id)}</title>
+  try {
+    const frame = document.createElement('iframe')
+    frame.style.cssText = 'position:fixed;width:0;height:0;border:0;right:0;bottom:0;visibility:hidden;'
+    frame.setAttribute('aria-hidden', 'true')
+    frame.setAttribute('tabindex', '-1')
+    frame.setAttribute('data-gramm', 'false')
+    frame.setAttribute('data-gramm_editor', 'false')
+    frame.setAttribute('data-enable-grammarly', 'false')
+    frame.setAttribute('spellcheck', 'false')
+    document.body.appendChild(frame)
+
+    const doc = frame.contentWindow?.document
+    if (!doc) {
+      if (frame.parentNode) frame.parentNode.removeChild(frame)
+      return
+    }
+
+    const paymentLabel = order.final_payment_method
+      ? (order.final_payment_method === 'upi' ? 'UPI / QR' : order.final_payment_method.toUpperCase())
+      : ''
+    const depositPayment = (() => {
+      return paymentLabel || 'Cash'
+    })()
+
+    const html = `<!doctype html><html lang="en" data-gramm="false" data-gramm_editor="false" data-enable-grammarly="false" spellcheck="false"><head><title>Advance Receipt ${esc(order.deposit_id)}</title>
 <meta charset="utf-8">
+<meta name="grammarly" content="off">
+<meta name="robots" content="noindex,nofollow">
 <style>
   @page { size: 80mm auto; margin: 0; }
   @media print { @page { size: 80mm auto; margin: 0; } }
@@ -106,14 +120,37 @@ ${order.category ? `<div class="r"><span class="label">Category</span><span>${es
 <div class="line"></div>
 <div class="warn">ADVANCE PAYMENT ONLY &mdash; NOT A FINAL INVOICE</div>
 </body></html>`
-  doc.open()
-  doc.write(html)
-  doc.close()
-  setTimeout(() => {
-    frame.contentWindow?.focus()
-    frame.contentWindow?.print()
-    setTimeout(() => frame.remove(), 1500)
-  }, 300)
+
+    doc.open()
+    doc.write(html)
+    doc.close()
+
+    const cleanup = () => {
+      try {
+        if (frame.parentNode) {
+          frame.parentNode.removeChild(frame)
+        }
+      } catch {}
+    }
+
+    setTimeout(() => {
+      try {
+        if (frame.contentWindow) {
+          frame.contentWindow.onbeforeunload = null
+          frame.contentWindow.onunload = null
+          frame.contentWindow.onafterprint = cleanup
+          frame.contentWindow.focus()
+          frame.contentWindow.print()
+        }
+      } catch (err) {
+        console.warn('[advanceReceipt] Print error:', err)
+      } finally {
+        setTimeout(cleanup, 2000)
+      }
+    }, 300)
+  } catch (err) {
+    console.warn('[advanceReceipt] Failed to print advance receipt:', err)
+  }
 }
 
 export function downloadFile(file: File) { const url = URL.createObjectURL(file); const link = document.createElement('a'); link.href = url; link.download = file.name; link.click(); setTimeout(() => URL.revokeObjectURL(url), 500) }

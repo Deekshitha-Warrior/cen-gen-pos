@@ -366,18 +366,23 @@ export const CreateBarcodeModal: React.FC<CreateBarcodeModalProps> = ({
     const selectedItems = queue.filter((it) => it.selected)
     if (selectedItems.length === 0) return
 
-    // Build printable HTML sheet for thermal / regular printer
-    const iframe = document.createElement('iframe')
-    iframe.style.position = 'fixed'
-    iframe.style.right = '0'
-    iframe.style.bottom = '0'
-    iframe.style.width = '0'
-    iframe.style.height = '0'
-    iframe.style.border = '0'
-    document.body.appendChild(iframe)
+    try {
+      // Build printable HTML sheet for thermal / regular printer
+      const iframe = document.createElement('iframe')
+      iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden;'
+      iframe.setAttribute('aria-hidden', 'true')
+      iframe.setAttribute('tabindex', '-1')
+      iframe.setAttribute('data-gramm', 'false')
+      iframe.setAttribute('data-gramm_editor', 'false')
+      iframe.setAttribute('data-enable-grammarly', 'false')
+      iframe.setAttribute('spellcheck', 'false')
+      document.body.appendChild(iframe)
 
-    const doc = iframe.contentWindow?.document
-    if (!doc) return
+      const doc = iframe.contentWindow?.document
+      if (!doc) {
+        if (iframe.parentNode) iframe.parentNode.removeChild(iframe)
+        return
+      }
 
     const isThermal = settings.printerType === 'label'
 
@@ -573,11 +578,10 @@ export const CreateBarcodeModal: React.FC<CreateBarcodeModalProps> = ({
                 }
               });
               setTimeout(function() {
-                window.focus();
-                window.print();
-                setTimeout(function() {
-                  window.parent.document.body.removeChild(window.frameElement);
-                }, 500);
+                try {
+                  window.focus();
+                  window.print();
+                } catch (e) {}
               }, 300);
             };
           </script>
@@ -585,7 +589,28 @@ export const CreateBarcodeModal: React.FC<CreateBarcodeModalProps> = ({
       </html>
     `)
     doc.close()
+
+    const cleanup = () => {
+      try {
+        if (iframe.parentNode) {
+          iframe.parentNode.removeChild(iframe)
+        }
+      } catch {}
+    }
+
+    try {
+      if (iframe.contentWindow) {
+        iframe.contentWindow.onbeforeunload = null
+        iframe.contentWindow.onunload = null
+        iframe.contentWindow.onafterprint = cleanup
+      }
+    } catch {}
+
+    setTimeout(cleanup, 2500)
+  } catch (err) {
+    console.warn('[CreateBarcodeModal] Failed to execute print:', err)
   }
+}
 
   if (!isOpen) return null
 

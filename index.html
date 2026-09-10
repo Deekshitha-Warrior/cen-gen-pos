@@ -14,7 +14,10 @@
             s.indexOf('A listener indicated an asynchronous response') !== -1 ||
             s.indexOf('ResizeObserver loop completed with undelivered notifications') !== -1 ||
             s.indexOf('ResizeObserver loop limit exceeded') !== -1 ||
-            s.indexOf('Non-Error promise rejection captured') !== -1
+            s.indexOf('Non-Error promise rejection captured') !== -1 ||
+            s.indexOf('Permissions policy violation: unload') !== -1 ||
+            s.indexOf('unload is not allowed in this document') !== -1 ||
+            s.indexOf('Using DEFAULT root logger') !== -1
           );
         };
 
@@ -36,6 +39,18 @@
             return false;
           }
         }, true);
+
+        // Filter benign extension violation warnings from console
+        var origWarn = console.warn;
+        console.warn = function() {
+          if (arguments.length > 0 && isBenign(arguments[0])) return;
+          return origWarn.apply(console, arguments);
+        };
+        var origError = console.error;
+        console.error = function() {
+          if (arguments.length > 0 && isBenign(arguments[0])) return;
+          return origError.apply(console, arguments);
+        };
       })();
     </script>
 
