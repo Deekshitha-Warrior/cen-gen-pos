@@ -2689,16 +2689,16 @@ export default function Dashboard() {
                     { label: 'Total Product Revenue', value: formatCurrency(analytics.totalCompletedRevenue), icon: <RMIcon size={18} />, from: 'from-emerald-500 to-teal-600' },
                     { label: 'Total Products Sold', value: String(Math.round(analytics.totalProductsSold)), icon: <Package size={18} />, from: 'from-blue-500 to-indigo-600' },
                     { label: 'Average Product Revenue', value: `${formatCurrency(analytics.averageProductRevenue)} / Product`, icon: <RMIcon size={18} />, from: 'from-violet-500 to-purple-600' },
-                    { label: 'Top Product', value: analytics.bestProduct.length > 15 ? analytics.bestProduct.slice(0, 15) + '...' : analytics.bestProduct, icon: <Trophy size={18} />, from: 'from-amber-500 to-orange-600' },
+                    { label: 'Top Product', value: analytics.bestProduct || 'No sales yet', icon: <Trophy size={18} />, from: 'from-amber-500 to-orange-600' },
                   ].map((card, i) => (
-                    <div key={i} className={`relative overflow-hidden rounded-2xl p-5 shadow-lg border border-white/20 bg-gradient-to-br ${card.from}`}>
+                    <div key={i} className={`relative overflow-hidden rounded-2xl p-5 shadow-lg border border-white/20 bg-gradient-to-br ${card.from} flex flex-col justify-between min-h-[120px]`}>
                       <div className="absolute inset-0 bg-gradient-to-tl from-white/30 via-white/10 to-transparent" />
-                      <div className="relative z-10">
-                        <div className="flex items-center justify-between mb-3">
+                      <div className="relative z-10 flex flex-col justify-between h-full">
+                        <div className="flex items-center justify-between gap-2 mb-2">
                           <p className="text-[10px] uppercase font-black text-white/80 tracking-wider">{card.label}</p>
-                          <div className="w-9 h-9 rounded-xl bg-white/25 backdrop-blur-sm flex items-center justify-center text-white shadow-sm">{card.icon}</div>
+                          <div className="w-9 h-9 rounded-xl bg-white/25 backdrop-blur-sm flex items-center justify-center text-white shadow-sm shrink-0">{card.icon}</div>
                         </div>
-                        <p className="text-[22px] font-extrabold text-white drop-shadow-sm truncate">{card.value}</p>
+                        <p className="text-[18px] sm:text-[22px] font-extrabold text-white drop-shadow-sm break-words leading-tight">{card.value}</p>
                       </div>
                     </div>
                   ))}
@@ -2858,14 +2858,14 @@ export default function Dashboard() {
                     { label: 'Usage Rate', value: `${analytics.couponUsageRate.toFixed(1)}%`, icon: <TrendingUp size={18} />, from: 'from-violet-500 to-purple-600' },
                     { label: 'Unique Coupons', value: String(analytics.topCoupons.length), icon: <Trophy size={18} />, from: 'from-amber-500 to-orange-600' },
                   ].map((card, i) => (
-                    <div key={i} className={`relative overflow-hidden rounded-2xl p-5 shadow-lg border border-white/20 bg-gradient-to-br ${card.from}`}>
+                    <div key={i} className={`relative overflow-hidden rounded-2xl p-5 shadow-lg border border-white/20 bg-gradient-to-br ${card.from} flex flex-col justify-between min-h-[120px]`}>
                       <div className="absolute inset-0 bg-gradient-to-tl from-white/30 via-white/10 to-transparent" />
-                      <div className="relative z-10">
-                        <div className="flex items-center justify-between mb-3">
+                      <div className="relative z-10 flex flex-col justify-between h-full">
+                        <div className="flex items-center justify-between gap-2 mb-2">
                           <p className="text-[10px] uppercase font-black text-white/80 tracking-wider">{card.label}</p>
-                          <div className="w-9 h-9 rounded-xl bg-white/25 backdrop-blur-sm flex items-center justify-center text-white shadow-sm">{card.icon}</div>
+                          <div className="w-9 h-9 rounded-xl bg-white/25 backdrop-blur-sm flex items-center justify-center text-white shadow-sm shrink-0">{card.icon}</div>
                         </div>
-                        <p className="text-[22px] font-extrabold text-white drop-shadow-sm truncate">{card.value}</p>
+                        <p className="text-[18px] sm:text-[22px] font-extrabold text-white drop-shadow-sm break-words leading-tight">{card.value}</p>
                       </div>
                     </div>
                   ))}
