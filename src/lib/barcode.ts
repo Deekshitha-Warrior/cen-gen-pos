@@ -52,7 +52,7 @@ export interface BarcodeSettings {
 
 export const DEFAULT_BARCODE_SETTINGS: BarcodeSettings = {
   printerType: 'label',
-  selectedSizeId: '2_38x25',
+  selectedSizeId: '4_35x22_3up',
   showSalePrice: true,
   showCompanyName: true,
   showItemName: true,
@@ -67,10 +67,21 @@ const LEGACY_SETTINGS_KEY = 'chaji_barcode_settings'
 const CUSTOM_SIZES_KEY = 'clad_custom_label_sizes'
 const LEGACY_CUSTOM_SIZES_KEY = 'chaji_custom_label_sizes'
 
+// One-time switch of existing installs to the 3-up roll; after this, whatever is chosen in settings sticks.
+const DEFAULT_3UP_APPLIED_KEY = 'clad_barcode_default_3up_applied'
+
 export function getStoredBarcodeSettings(): BarcodeSettings {
   try {
     const raw = localStorage.getItem(SETTINGS_KEY) || localStorage.getItem(LEGACY_SETTINGS_KEY)
-    if (raw) return { ...DEFAULT_BARCODE_SETTINGS, ...JSON.parse(raw) }
+    if (raw) {
+      const merged: BarcodeSettings = { ...DEFAULT_BARCODE_SETTINGS, ...JSON.parse(raw) }
+      if (!localStorage.getItem(DEFAULT_3UP_APPLIED_KEY)) {
+        merged.selectedSizeId = DEFAULT_BARCODE_SETTINGS.selectedSizeId
+        localStorage.setItem(SETTINGS_KEY, JSON.stringify(merged))
+        localStorage.setItem(DEFAULT_3UP_APPLIED_KEY, '1')
+      }
+      return merged
+    }
   } catch (e) {
     console.error('Failed to parse barcode settings:', e)
   }

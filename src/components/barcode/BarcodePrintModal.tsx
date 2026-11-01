@@ -82,6 +82,14 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
     return unsubscribe
   }, [isOpen])
 
+  // Label size always follows Barcode Settings (re-read whenever the modal opens or sizes sync)
+  useEffect(() => {
+    if (!isOpen) return
+    const savedId = getStoredBarcodeSettings().selectedSizeId
+    const match = presets.find((x) => x.id === savedId)
+    if (match) setSelectedPreset(match)
+  }, [isOpen, presets])
+
   const handlePrinterTypeChange = (type: 'label' | 'regular') => {
     setPrinterType(type)
     const current = getStoredBarcodeSettings()
@@ -451,25 +459,11 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
                 <label className="block text-xs font-black uppercase tracking-wider text-gray-700 mb-1.5">
                   Label Sizing Preset
                 </label>
-                <select
-                  value={selectedPreset.name}
-                  onChange={(e) => {
-                    const preset = presets.find((p) => p.name === e.target.value)
-                    if (preset) {
-                      setSelectedPreset(preset)
-                      saveStoredBarcodeSettings({ ...getStoredBarcodeSettings(), selectedSizeId: preset.id })
-                    }
-                  }}
-                  className="w-full py-2.5 px-3 rounded-xl border-2 border-[#E8D399] bg-white font-bold text-xs sm:text-sm text-gray-900 outline-none focus:border-[#0A0A0A] shadow-sm cursor-pointer"
-                >
-                  {presets.map((p) => (
-                    <option key={p.name} value={p.name}>
-                      {p.name}
-                    </option>
-                  ))}
-                </select>
+                <div className="w-full py-2.5 px-3 rounded-xl border-2 border-[#E8D399] bg-white font-bold text-xs sm:text-sm text-gray-900 shadow-sm">
+                  {selectedPreset.name}
+                </div>
                 <p className="text-[11px] text-gray-500 mt-1">
-                  Dimensions: {selectedPreset.widthMm}mm × {selectedPreset.heightMm}mm
+                  Dimensions: {selectedPreset.widthMm}mm × {selectedPreset.heightMm}mm · change in Barcode Settings
                 </p>
               </div>
             </div>
