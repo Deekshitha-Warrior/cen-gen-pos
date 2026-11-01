@@ -295,19 +295,20 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
       }
       .header { width: 100%; display: flex; flex-direction: column; align-items: center; line-height: 1.1; flex-shrink: 0; }
       .brand { font-size: ${headerFontSize}; font-weight: 900; letter-spacing: 0.3px; text-transform: uppercase; color: #000; }
-      .prod-title { font-size: ${titleFontSize}; font-weight: 700; white-space: nowrap; overflow: hidden;
-        text-overflow: ellipsis; max-width: 98%; margin-top: 0.3mm; color: #111; }
+      .prod-title { font-size: ${titleFontSize}; font-weight: 800; white-space: nowrap; overflow: hidden;
+        text-overflow: ellipsis; max-width: 98%; margin-top: 0.3mm; color: #000; }
       .barcode-box { width: 100%; flex: 1; min-height: 0; display: flex; justify-content: center;
         align-items: center; margin: 0.4mm 0; overflow: hidden; }
       .barcode-box svg { display: block; margin: 0 auto; max-width: 98%; max-height: 100%; width: auto; height: auto; }
       .barcode-box.thermal { flex-direction: column; justify-content: center; width: calc(100% + 1.2mm); margin-left: -0.6mm; margin-right: -0.6mm; }
       .barcode-box svg.bc-bars { flex: 1 1 0; min-height: 0; height: auto; max-width: none; max-height: none; }
-      .bc-text { font-size: 5.5pt; line-height: 1; letter-spacing: 0.2px; margin-top: 0.3mm; color: #000; flex-shrink: 0; }
+      .bc-text { font-size: 5.5pt; line-height: 1; letter-spacing: 0.2px; margin-top: 0.3mm; color: #000; font-weight: 700; flex-shrink: 0; }
       .footer { width: 100%; display: flex; justify-content: space-between; align-items: center;
         border-top: 0.6pt solid #000; padding-top: 0.5mm; line-height: 1; flex-shrink: 0; font-size: ${tagFontSize}; }
-      .retail-tag { font-size: ${tagFontSize}; font-weight: 800; color: #444; }
-      .mrp { text-decoration: line-through; color: #555; font-size: ${tagFontSize}; font-weight: 600; }
+      .retail-tag { font-size: ${tagFontSize}; font-weight: 800; color: #000; }
+      .mrp { text-decoration: line-through; color: #000; font-size: ${tagFontSize}; font-weight: 600; }
       .price { font-size: ${priceFontSize}; font-weight: 900; color: #000; }
+      .header *, .prod-title, .bc-text, .footer *, .price, .mrp, .retail-tag { font-weight: 900 !important; -webkit-text-stroke: 0.25pt #000; color: #000 !important; }
     </style>
   </head>
   <body>

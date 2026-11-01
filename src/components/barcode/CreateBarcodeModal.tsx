@@ -594,13 +594,13 @@ export const CreateBarcodeModal: React.FC<CreateBarcodeModalProps> = ({
             }
             .prod-title {
               font-size: ${titleFontSize};
-              font-weight: 700;
+              font-weight: 800;
               white-space: nowrap;
               overflow: hidden;
               text-overflow: ellipsis;
               max-width: 98%;
               margin-top: 0.3mm;
-              color: #111;
+              color: #000;
               line-height: 1.1;
             }
             .barcode-box {
@@ -623,7 +623,7 @@ export const CreateBarcodeModal: React.FC<CreateBarcodeModalProps> = ({
             }
             .barcode-box.thermal { flex-direction: column; justify-content: center; width: calc(100% + 1.2mm); margin-left: -0.6mm; margin-right: -0.6mm; }
             .barcode-box svg.bc-bars { flex: 1 1 0; min-height: 0; height: auto; max-width: none; max-height: none; }
-            .bc-text { font-size: 5.5pt; line-height: 1; letter-spacing: 0.2px; margin-top: 0.3mm; color: #000; flex-shrink: 0; }
+            .bc-text { font-size: 5.5pt; line-height: 1; letter-spacing: 0.2px; margin-top: 0.3mm; color: #000; font-weight: 700; flex-shrink: 0; }
             .footer {
               width: 100%;
               display: flex;
@@ -638,13 +638,14 @@ export const CreateBarcodeModal: React.FC<CreateBarcodeModalProps> = ({
             .tag {
               font-size: ${tagFontSize};
               font-weight: 700;
-              color: #444;
+              color: #000;
             }
             .price {
               font-size: ${priceFontSize};
               font-weight: 900;
               color: #000;
             }
+            .header *, .prod-title, .bc-text, .footer *, .price, .mrp, .retail-tag { font-weight: 900 !important; -webkit-text-stroke: 0.25pt #000; color: #000 !important; }
           </style>
         </head>
         <body data-gramm="false">
