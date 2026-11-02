@@ -88,6 +88,7 @@ export function getStoredBarcodeSettings(): BarcodeSettings {
   return DEFAULT_BARCODE_SETTINGS
 }
 
+
 export function saveStoredBarcodeSettings(settings: BarcodeSettings): void {
   try {
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings))
@@ -393,6 +394,18 @@ export function generateThermalBarcodeSvg(value: string, availableWidthMm: numbe
     console.error('[generateThermalBarcodeSvg] Failed to generate barcode SVG:', err)
     return ''
   }
+}
+export function getBarcodeModuleWidth(value: string, availableWidthMm: number, options?: BarcodeRenderOptions): number | null {
+  if (!value.trim() || !Number.isFinite(availableWidthMm) || availableWidthMm <= 0) return null
+
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+  renderBarcodeSvg(svg, value, { ...options, width: 1 })
+
+  const naturalWidth = Number.parseFloat(svg.getAttribute('width') || '')
+  if (!Number.isFinite(naturalWidth) || naturalWidth <= 0) return null
+
+  const moduleWidth = (availableWidthMm * 96 / 25.4) / naturalWidth
+  return moduleWidth >= 0.95 ? moduleWidth : null
 }
 
 /**

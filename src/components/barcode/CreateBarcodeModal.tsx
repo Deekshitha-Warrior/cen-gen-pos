@@ -24,6 +24,7 @@ import {
   renderBarcodeSvg,
   generateBarcodeSvgString,
   generateThermalBarcodeSvg,
+  getBarcodeModuleWidth,
   normalizeBarcode,
 } from '../../lib/barcode'
 import { BRAND_EN } from '../../lib/brand'
@@ -394,6 +395,30 @@ export const CreateBarcodeModal: React.FC<CreateBarcodeModalProps> = ({
     const selectedItems = queue.filter((it) => it.selected)
     if (selectedItems.length === 0) return
 
+    const isThermal = settings.printerType === 'label'
+    const isSmall = currentSizeConfig.heightMm <= 25
+    const barcodeHeightPx = Math.max(16, Math.round(currentSizeConfig.heightMm * 0.32 * 3.7795))
+    const barcodeFontSize = Math.max(6, Math.min(9.5, Math.round(currentSizeConfig.heightMm * 0.20 * 10) / 10))
+    const barcodeAvailableWidthMm = (currentSizeConfig.widthMm - (isSmall ? 4 : 3.2)) * 0.97
+    const barcodeWidths = new Map<string, number>()
+    if (!isThermal) {
+      for (const item of selectedItems) {
+        const moduleWidth = getBarcodeModuleWidth(item.barcodeValue, barcodeAvailableWidthMm, {
+          height: barcodeHeightPx,
+          fontSize: barcodeFontSize,
+          font: 'Arial, sans-serif',
+          margin: 0,
+          textMargin: 1.5,
+          displayValue: true,
+        })
+        if (moduleWidth === null) {
+          alert(`Barcode "${item.barcodeValue}" is too dense for the selected sticker size. Choose a wider label or use a shorter barcode.`)
+          return
+        }
+        barcodeWidths.set(item.barcodeValue, moduleWidth)
+      }
+    }
+
     try {
       // Build printable HTML sheet for thermal / regular printer
       const iframe = document.createElement('iframe')
@@ -412,15 +437,7 @@ export const CreateBarcodeModal: React.FC<CreateBarcodeModalProps> = ({
         return
       }
 
-    const isThermal = settings.printerType === 'label'
-    const isSmall = currentSizeConfig.heightMm <= 25
     const isLarge = currentSizeConfig.heightMm >= 40
-
-    // Proportional barcode sizing preventing detail overlaps
-    const barcodeHeightPx = Math.max(16, Math.round(currentSizeConfig.heightMm * 0.32 * 3.7795))
-    const printableWidthPx = Math.max(30, (currentSizeConfig.widthMm - 4) * 3.7795)
-    const barcodeBarWidth = Math.max(0.80, Math.min(1.70, Math.round((printableWidthPx / 120) * 100) / 100))
-    const barcodeFontSize = Math.max(6, Math.min(9.5, Math.round(currentSizeConfig.heightMm * 0.20 * 10) / 10))
 
     const headerFontSize = isSmall ? '7pt' : isLarge ? '10.5pt' : '8.5pt'
     const titleFontSize = isSmall ? '6pt' : isLarge ? '9pt' : '7.5pt'
@@ -436,8 +453,8 @@ export const CreateBarcodeModal: React.FC<CreateBarcodeModalProps> = ({
     selectedItems.forEach((item) => {
       const count = Math.max(1, item.noOfLabels)
       const fullTitle = `${item.productName}${item.variantName ? ` (${item.variantName})` : ''}`
-      const svgMarkup = generateBarcodeSvgString(item.barcodeValue, {
-        width: barcodeBarWidth,
+      const svgMarkup = isThermal ? '' : generateBarcodeSvgString(item.barcodeValue, {
+        width: barcodeWidths.get(item.barcodeValue) ?? undefined,
         height: barcodeHeightPx,
         fontSize: barcodeFontSize,
         font: 'Arial, sans-serif',
@@ -564,6 +581,13 @@ export const CreateBarcodeModal: React.FC<CreateBarcodeModalProps> = ({
               grid-auto-rows: ${currentSizeConfig.heightMm}mm;
               column-gap: ${gapMm}mm;
               row-gap: ${currentSizeConfig.horizontalGapMm || gapMm}mm;
+            }
+            .a4-container .label-sticker:nth-child(${labelsPerRow}n + 1) > * {
+              position: relative;
+              left: 1.5mm;
+            }
+            .a4-container .label-sticker:nth-child(${labelsPerRow}n + 1) .barcode-box {
+              overflow: visible;
             }
             .label-sticker {
               width: ${currentSizeConfig.widthMm}mm !important;

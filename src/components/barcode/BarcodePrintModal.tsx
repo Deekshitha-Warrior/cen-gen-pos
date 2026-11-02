@@ -8,6 +8,7 @@ import {
   getAllLabelSizes,
   generateBarcodeSvgString,
   generateThermalBarcodeSvg,
+  getBarcodeModuleWidth,
   getStoredBarcodeSettings,
   saveStoredBarcodeSettings,
   subscribeCustomSizes,
@@ -153,12 +154,24 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
       const isLarge = selectedPreset.heightMm >= 40
 
       const barcodeHeightPx = Math.max(16, Math.round(selectedPreset.heightMm * 0.32 * 3.7795))
-      const printableWidthPx = Math.max(30, (selectedPreset.widthMm - 4) * 3.7795)
-      const barcodeBarWidth = Math.max(0.80, Math.min(1.70, Math.round((printableWidthPx / 120) * 100) / 100))
       const barcodeFontSize = Math.max(6, Math.min(9.5, Math.round(selectedPreset.heightMm * 0.20 * 10) / 10))
+      const barcodeAvailableWidthMm = (selectedPreset.widthMm - (isSmall ? 4 : 3.2)) * 0.97
+      const barcodeBarWidth = isThermal ? null : getBarcodeModuleWidth(barcodeValue, barcodeAvailableWidthMm, {
+        height: barcodeHeightPx,
+        fontSize: barcodeFontSize,
+        font: 'Arial, sans-serif',
+        margin: 0,
+        textMargin: 1.5,
+        displayValue: true,
+      })
+      if (!isThermal && barcodeBarWidth === null) {
+        iframe.remove()
+        alert('This barcode is too dense for the selected sticker size. Choose a wider label or use a shorter barcode.')
+        return
+      }
 
-      const svgMarkup = generateBarcodeSvgString(barcodeValue, {
-        width: barcodeBarWidth,
+      const svgMarkup = isThermal ? '' : generateBarcodeSvgString(barcodeValue, {
+        width: barcodeBarWidth ?? undefined,
         height: barcodeHeightPx,
         fontSize: barcodeFontSize,
         font: 'Arial, sans-serif',
@@ -278,6 +291,8 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
       .label-row:last-child { break-after: auto; page-break-after: auto; }
       .label-row .sticker { width: auto; min-width: 0; height: ${selectedPreset.heightMm}mm; overflow: hidden; padding-top: ${thermalTopPadMm}mm; padding-bottom: ${thermalBottomPadMm}mm; }
       ` : ''}
+      .grid .sticker:nth-child(${labelsPerRow}n + 1) > * { position: relative; left: 1.5mm; }
+      .grid .sticker:nth-child(${labelsPerRow}n + 1) .barcode-box { overflow: visible; }
       .sticker { 
         width: ${colWidthMm}mm; 
         height: ${selectedPreset.heightMm}mm;
@@ -286,14 +301,6 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
         flex-direction: column; 
         justify-content: space-between;
         align-items: center; 
-        text-align: center; 
-        overflow: hidden; 
-        background: #fff;
-        ${isThermal ? '' : 'border: 0.2mm dashed #bbb;'}
-        break-inside: avoid; 
-        page-break-inside: avoid; 
-      }
-      .header { width: 100%; display: flex; flex-direction: column; align-items: center; line-height: 1.1; flex-shrink: 0; }
       .brand { font-size: ${headerFontSize}; font-weight: 900; letter-spacing: 0.3px; text-transform: uppercase; color: #000; }
       .prod-title { font-size: ${titleFontSize}; font-weight: 800; white-space: nowrap; overflow: hidden;
         text-overflow: ellipsis; max-width: 98%; margin-top: 0.3mm; color: #000; }
