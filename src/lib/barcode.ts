@@ -2,7 +2,15 @@ import JsBarcode from 'jsbarcode'
 import { isSupabaseConfigured, supabase } from './supabase'
 
 export const normalizeBarcode = (code: string | null | undefined): string => {
-  return (code || '').trim().toUpperCase()
+  if (code === null || code === undefined) return ''
+
+  const clean = String(code)
+    .trim()
+    .replace(/[\u0000-\u001F\u007F]/g, '')
+    .replace(/[^A-Z0-9_-]/gi, '')
+    .toUpperCase()
+
+  return clean
 }
 
 export interface LabelSizeConfig {
@@ -423,5 +431,5 @@ export function formatBarcodeDisplay(value?: string | null): string {
  * Validate barcode format (alphanumeric, 4 to 32 chars).
  */
 export function isValidBarcodeValue(value: string): boolean {
-  return /^[A-Z0-9_-]{4,32}$/i.test(value.trim())
+  return /^[A-Z0-9_-]{4,32}$/i.test(String(value ?? '').trim())
 }
