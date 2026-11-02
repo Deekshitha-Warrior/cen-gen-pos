@@ -1,7 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
 
-const env = (typeof import.meta !== 'undefined' && 'env' in import.meta ? import.meta.env : {}) as Record<string, string | undefined>
-
 // Vercel environment values can accidentally contain the next variable when
 // several KEY=VALUE lines are pasted into one field. Keep the first non-empty
 // line so a valid Supabase key still works, while preventing a newline from
@@ -13,14 +11,14 @@ const cleanEnvValue = (value: unknown) => {
 }
 
 const supabaseUrl = cleanEnvValue(
-  (env.VITE_SUPABASE_URL as string | undefined) ??
-  (env.NEXT_PUBLIC_SUPABASE_URL as string | undefined)
+  (import.meta.env.VITE_SUPABASE_URL as string | undefined) ??
+  (import.meta.env.NEXT_PUBLIC_SUPABASE_URL as string | undefined)
 )
 
 const supabaseAnonKey = cleanEnvValue(
-  (env.VITE_SUPABASE_ANON_KEY as string | undefined) ??
-  (env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY as string | undefined) ??
-  (env.NEXT_PUBLIC_SUPABASE_ANON_KEY as string | undefined)
+  (import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined) ??
+  (import.meta.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY as string | undefined) ??
+  (import.meta.env.NEXT_PUBLIC_SUPABASE_ANON_KEY as string | undefined)
 )
 
 export const supabase = createClient(
