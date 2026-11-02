@@ -408,6 +408,8 @@ export const CreateBarcodeModal: React.FC<CreateBarcodeModalProps> = ({
           fontSize: barcodeFontSize,
           font: 'Arial, sans-serif',
           margin: 0,
+          marginLeft: 10,
+          marginRight: 10,
           textMargin: 1.5,
           displayValue: true,
         })
@@ -416,6 +418,17 @@ export const CreateBarcodeModal: React.FC<CreateBarcodeModalProps> = ({
           return
         }
         barcodeWidths.set(item.barcodeValue, moduleWidth)
+      }
+    }
+    const thermalBarcodes = new Map<string, string>()
+    if (isThermal) {
+      for (const item of selectedItems) {
+        const svg = generateThermalBarcodeSvg(item.barcodeValue, currentSizeConfig.widthMm - 3.4)
+        if (!svg) {
+          alert(`Barcode "${item.barcodeValue}" is too long for the selected sticker size. Choose a wider label or use a shorter barcode.`)
+          return
+        }
+        thermalBarcodes.set(item.barcodeValue, svg)
       }
     }
 
@@ -440,7 +453,6 @@ export const CreateBarcodeModal: React.FC<CreateBarcodeModalProps> = ({
     const isLarge = currentSizeConfig.heightMm >= 40
 
     const headerFontSize = isSmall ? '7pt' : isLarge ? '10.5pt' : '8.5pt'
-    const titleFontSize = isSmall ? '6pt' : isLarge ? '9pt' : '7.5pt'
     const tagFontSize = isSmall ? '5.5pt' : isLarge ? '8.5pt' : '7pt'
     const priceFontSize = isSmall ? '8pt' : isLarge ? '12pt' : '9.5pt'
     const stickerPadding = isThermal
@@ -459,21 +471,22 @@ export const CreateBarcodeModal: React.FC<CreateBarcodeModalProps> = ({
         fontSize: barcodeFontSize,
         font: 'Arial, sans-serif',
         margin: 0,
+        marginLeft: 10,
+        marginRight: 10,
         marginBottom: 2,
         textMargin: 1.5,
         displayValue: true,
       })
-      const thermalSvg = isThermal ? generateThermalBarcodeSvg(item.barcodeValue, currentSizeConfig.widthMm - 3.4) : ''
+      const thermalSvg = thermalBarcodes.get(item.barcodeValue) || ''
       for (let i = 0; i < count; i++) {
         allStickers.push(`
           <div class="label-sticker">
             ${settings.showCompanyName ? `<div class="header">${item.header || BRAND_EN}</div>` : ''}
-            ${settings.showItemName ? `<div class="prod-title">${fullTitle}</div>` : ''}
             ${isThermal
               ? `<div class="barcode-box thermal">${thermalSvg}<div class="bc-text">${item.barcodeValue}</div></div>`
               : `<div class="barcode-box">${svgMarkup}</div>`}
             <div class="footer">
-              <span>${item.line2 ? `<span class="tag">${item.line2}</span>` : '<span class="tag">CLAD RETAIL</span>'}</span>
+              <span class="product-name">${settings.showItemName ? fullTitle : item.line2 || ''}</span>
               ${settings.showSalePrice ? `<span class="price">₹${item.price}</span>` : ''}
             </div>
           </div>
@@ -616,17 +629,6 @@ export const CreateBarcodeModal: React.FC<CreateBarcodeModalProps> = ({
               color: #000;
               flex-shrink: 0;
             }
-            .prod-title {
-              font-size: ${titleFontSize};
-              font-weight: 800;
-              white-space: nowrap;
-              overflow: hidden;
-              text-overflow: ellipsis;
-              max-width: 98%;
-              margin-top: 0.3mm;
-              color: #000;
-              line-height: 1.1;
-            }
             .barcode-box {
               width: 100%;
               flex: 1;
@@ -653,10 +655,20 @@ export const CreateBarcodeModal: React.FC<CreateBarcodeModalProps> = ({
               display: flex;
               justify-content: space-between;
               align-items: center;
+              gap: 1mm;
               border-top: 0.6pt solid #000;
               padding-top: 0.5mm;
               line-height: 1;
               flex-shrink: 0;
+              font-size: ${tagFontSize};
+            }
+            .product-name {
+              flex: 1;
+              min-width: 0;
+              overflow: hidden;
+              text-overflow: ellipsis;
+              white-space: nowrap;
+              text-align: left;
               font-size: ${tagFontSize};
             }
             .tag {
@@ -669,7 +681,7 @@ export const CreateBarcodeModal: React.FC<CreateBarcodeModalProps> = ({
               font-weight: 900;
               color: #000;
             }
-            .header *, .prod-title, .bc-text, .footer *, .price, .mrp, .retail-tag { font-weight: 900 !important; -webkit-text-stroke: 0.25pt #000; color: #000 !important; }
+            .header *, .product-name, .bc-text, .footer *, .price, .mrp, .retail-tag { font-weight: 900 !important; -webkit-text-stroke: 0.25pt #000; color: #000 !important; }
           </style>
         </head>
         <body data-gramm="false">

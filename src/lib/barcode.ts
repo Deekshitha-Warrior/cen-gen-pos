@@ -270,6 +270,8 @@ export interface BarcodeRenderOptions {
   font?: string
   textMargin?: number
   margin?: number
+  marginLeft?: number
+  marginRight?: number
   /** Extra space under the human-readable text so it is not clipped */
   marginBottom?: number
   lineColor?: string
@@ -296,6 +298,8 @@ export function renderBarcodeSvg(
       font: options?.font ?? 'monospace',
       textMargin: options?.textMargin ?? 1,
       margin: options?.margin ?? 4,
+      ...(options?.marginLeft !== undefined ? { marginLeft: options.marginLeft } : {}),
+      ...(options?.marginRight !== undefined ? { marginRight: options.marginRight } : {}),
       ...(options?.marginBottom !== undefined ? { marginBottom: options.marginBottom } : {}),
       lineColor: options?.lineColor ?? '#000000',
       background: options?.background ?? '#ffffff',
@@ -369,25 +373,22 @@ export function generateThermalBarcodeSvg(value: string, availableWidthMm: numbe
     }
     const widthDots = (map: number[]) =>
       elements.reduce((sum, e) => sum + (map[e.modules - 1] ?? e.modules * map[0]), 0)
-    const maxDots = Math.floor(availableWidthMm / PRINTER_DOT_MM)
-    const map = THERMAL_DOT_MAPS.find((m) => widthDots(m) <= maxDots)
+    const availableDots = Math.floor(availableWidthMm / PRINTER_DOT_MM)
+    const map = THERMAL_DOT_MAPS.find((candidate) => {
+      const quietZoneDots = candidate[0] * 10
+      return widthDots(candidate) + quietZoneDots * 2 <= availableDots
+    })
+    if (!map) return ''
 
+    const quietZoneDots = map[0] * 10
     let rects = ''
-    let totalDots: number
-    if (map) {
-      let x = 0
-      for (const e of elements) {
-        const w = map[e.modules - 1] ?? e.modules * map[0]
-        if (e.bar) rects += `<rect x="${x}" y="0" width="${w}" height="100"/>`
-        x += w
-      }
-      totalDots = x
-    } else {
-      // Too long to fit at 2 dots per module: scale evenly (best effort)
-      const scale = maxDots / modules
-      for (const b of bars) rects += `<rect x="${(b.x * scale).toFixed(3)}" y="0" width="${(b.w * scale).toFixed(3)}" height="100"/>`
-      totalDots = maxDots
+    let x = quietZoneDots
+    for (const e of elements) {
+      const width = map[e.modules - 1] ?? e.modules * map[0]
+      if (e.bar) rects += `<rect x="${x}" y="0" width="${width}" height="100"/>`
+      x += width
     }
+    const totalDots = x + quietZoneDots
     const widthMm = (totalDots * PRINTER_DOT_MM).toFixed(3)
     return `<svg class="bc-bars" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${totalDots} 100" width="${widthMm}mm" style="width:${widthMm}mm" preserveAspectRatio="none" shape-rendering="crispEdges"><rect x="0" y="0" width="${totalDots}" height="100" fill="#fff"/><g fill="#000">${rects}</g></svg>`
   } catch (err) {
