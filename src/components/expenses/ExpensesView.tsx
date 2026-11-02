@@ -22,6 +22,8 @@ import {
   type ExpenseRecord,
   type ExpenseSummaryMetrics,
 } from '../../services/expenseService'
+import { getDateRange } from '../../lib/dateRange'
+import { useDebouncedValue } from '../../lib/debounce'
 import { RecordExpenseModal } from './RecordExpenseModal'
 import { ExpenseCategoriesView } from './ExpenseCategoriesView'
 
@@ -49,8 +51,8 @@ export const ExpensesView: React.FC = () => {
   const [toDate, setToDate] = useState('')
   const [activePreset, setActivePreset] = useState<'all' | 'today' | 'week' | 'month' | 'custom'>('all')
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>('all')
-  const [selectedPaymentMode, setSelectedPaymentMode] = useState<string>('all')
   const [searchQuery, setSearchQuery] = useState('')
+  const [debouncedSearchQuery] = useDebouncedValue(searchQuery, 300)
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false)
 
   const loadMetrics = useCallback(async () => {
@@ -100,18 +102,14 @@ export const ExpensesView: React.FC = () => {
     let count = 0
     if (selectedCategoryId !== 'all') count++
     if (activePreset !== 'all') count++
-    if (selectedPaymentMode !== 'all') count++
     return count
-  }, [selectedCategoryId, activePreset, selectedPaymentMode])
+  }, [selectedCategoryId, activePreset])
 
-  // Filter expenses list by search query and payment mode
+  // Filter expenses list by debounced search query
   const filteredExpenses = useMemo(() => {
     let list = expenses
-    if (selectedPaymentMode !== 'all') {
-      list = list.filter((e) => e.payment_mode?.toLowerCase() === selectedPaymentMode.toLowerCase())
-    }
-    if (!searchQuery.trim()) return list
-    const q = searchQuery.toLowerCase().trim()
+    if (!debouncedSearchQuery.trim()) return list
+    const q = debouncedSearchQuery.toLowerCase().trim()
     return list.filter(
       (e) =>
         e.description?.toLowerCase().includes(q) ||
@@ -120,32 +118,20 @@ export const ExpensesView: React.FC = () => {
         e.recorded_by_name?.toLowerCase().includes(q) ||
         String(e.amount).includes(q)
     )
-  }, [expenses, searchQuery, selectedPaymentMode])
+  }, [expenses, debouncedSearchQuery])
 
-  // Handle Preset Clicks (Synchronizes FROM and TO dates)
+  // Handle Preset Clicks (Synchronizes FROM and TO dates with local calendar)
   const applyDatePreset = (preset: 'all' | 'today' | 'week' | 'month' | 'custom') => {
     setActivePreset(preset)
-    const today = new Date()
-    const todayStr = today.toISOString().slice(0, 10)
-
     if (preset === 'all') {
       setFromDate('')
       setToDate('')
-    } else if (preset === 'today') {
-      setFromDate(todayStr)
-      setToDate(todayStr)
-    } else if (preset === 'week') {
-      const dayOfWeek = (today.getDay() + 6) % 7
-      const monday = new Date(today)
-      monday.setDate(today.getDate() - dayOfWeek)
-      setFromDate(monday.toISOString().slice(0, 10))
-      setToDate(todayStr)
-    } else if (preset === 'month') {
-      const monthStart = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-01`
-      setFromDate(monthStart)
-      setToDate(todayStr)
     } else if (preset === 'custom') {
       setShowAdvancedFilters(true)
+    } else {
+      const range = getDateRange(preset, new Date())
+      setFromDate(range.startDateStr || '')
+      setToDate(range.endDateStr || '')
     }
   }
 
@@ -154,7 +140,6 @@ export const ExpensesView: React.FC = () => {
     setToDate('')
     setActivePreset('all')
     setSelectedCategoryId('all')
-    setSelectedPaymentMode('all')
     setSearchQuery('')
     setShowAdvancedFilters(false)
   }
@@ -166,9 +151,10 @@ export const ExpensesView: React.FC = () => {
       await expenseService.deleteExpense(id)
       setExpenses((prev) => prev.filter((e) => e.id !== id))
       void loadMetrics()
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to delete expense:', err)
-      alert('Could not delete expense record')
+      const errorMsg = err?.message || (typeof err === 'string' ? err : JSON.stringify(err)) || 'Could not delete expense record'
+      alert(`Delete Error: ${errorMsg}`)
     }
   }
 
@@ -282,13 +268,13 @@ export const ExpensesView: React.FC = () => {
             <div className="flex flex-col lg:flex-row items-stretch lg:items-center gap-2.5">
               {/* Search Box */}
               <div className="relative flex-1 min-w-0">
-                <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
                 <input
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="Search description, category, staff, amount..."
-                  className="w-full h-10 pl-9 pr-8 rounded-xl border border-gray-200 bg-[#F9FAFB] text-xs font-semibold text-gray-900 placeholder-gray-400 outline-none focus:border-[#D4AF37] focus:bg-white transition-colors"
+                  className="w-full h-10 pl-10 pr-8 rounded-xl border border-gray-200 bg-[#F9FAFB] text-[11px] sm:text-xs font-semibold text-gray-900 placeholder:text-gray-400 placeholder:font-normal outline-none focus:border-[#D4AF37] focus:bg-white transition-colors"
                 />
                 {searchQuery && (
                   <button
@@ -302,13 +288,13 @@ export const ExpensesView: React.FC = () => {
               </div>
 
               {/* Controls Group: Category Dropdown, Date Preset Dropdown, Filters Toggle */}
-              <div className="grid grid-cols-3 sm:flex items-center gap-2 shrink-0">
+              <div className="grid grid-cols-3 sm:flex items-center gap-1.5 sm:gap-2 shrink-0">
                 {/* Category Dropdown */}
                 <div className="relative min-w-0">
                   <select
                     value={selectedCategoryId}
                     onChange={(e) => setSelectedCategoryId(e.target.value)}
-                    className="w-full sm:w-36 lg:w-40 h-10 appearance-none pl-3 pr-7 rounded-xl bg-[#F9FAFB] border border-gray-200 text-xs font-bold text-gray-800 focus:outline-none focus:border-[#D4AF37] cursor-pointer hover:bg-gray-100 transition-colors truncate"
+                    className="w-full sm:w-36 lg:w-40 h-10 appearance-none pl-2 sm:pl-3 pr-5 sm:pr-7 rounded-xl bg-[#F9FAFB] border border-gray-200 text-[10.5px] sm:text-xs font-semibold text-gray-800 focus:outline-none focus:border-[#D4AF37] cursor-pointer hover:bg-gray-100 transition-colors truncate"
                   >
                     <option value="all">All Categories</option>
                     {categories.map((cat) => (
@@ -317,7 +303,7 @@ export const ExpensesView: React.FC = () => {
                       </option>
                     ))}
                   </select>
-                  <ChevronDown size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
+                  <ChevronDown size={11} className="absolute right-1.5 sm:right-2.5 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
                 </div>
 
                 {/* Date Preset Dropdown */}
@@ -328,7 +314,7 @@ export const ExpensesView: React.FC = () => {
                       const val = e.target.value as 'all' | 'today' | 'week' | 'month' | 'custom'
                       applyDatePreset(val)
                     }}
-                    className="w-full sm:w-32 lg:w-36 h-10 appearance-none pl-3 pr-7 rounded-xl bg-[#F9FAFB] border border-gray-200 text-xs font-bold text-gray-800 focus:outline-none focus:border-[#D4AF37] cursor-pointer hover:bg-gray-100 transition-colors truncate"
+                    className="w-full sm:w-32 lg:w-36 h-10 appearance-none pl-2 sm:pl-3 pr-5 sm:pr-7 rounded-xl bg-[#F9FAFB] border border-gray-200 text-[10.5px] sm:text-xs font-semibold text-gray-800 focus:outline-none focus:border-[#D4AF37] cursor-pointer hover:bg-gray-100 transition-colors truncate"
                   >
                     <option value="all">All Dates</option>
                     <option value="today">Today</option>
@@ -336,28 +322,28 @@ export const ExpensesView: React.FC = () => {
                     <option value="month">This Month</option>
                     <option value="custom">Custom...</option>
                   </select>
-                  <ChevronDown size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
+                  <ChevronDown size={11} className="absolute right-1.5 sm:right-2.5 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
                 </div>
 
                 {/* Detailed Filters Toggle Button */}
                 <button
                   type="button"
                   onClick={() => setShowAdvancedFilters((v) => !v)}
-                  className={`w-full sm:w-auto h-10 px-2.5 sm:px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer min-w-0 shrink-0 ${
+                  className={`w-full sm:w-auto h-10 px-2 sm:px-3 rounded-xl border text-[10.5px] sm:text-xs font-semibold flex items-center justify-center gap-1 sm:gap-1.5 transition-colors cursor-pointer min-w-0 shrink-0 ${
                     showAdvancedFilters || activeFiltersCount > 0
                       ? 'bg-[#0A0A0A] text-white border-[#0A0A0A]'
                       : 'bg-[#F9FAFB] text-gray-700 border-gray-200 hover:bg-gray-100'
                   }`}
                   title="Toggle detailed filters"
                 >
-                  <SlidersHorizontal size={12} className="shrink-0" />
+                  <SlidersHorizontal size={11} className="shrink-0" />
                   <span className="truncate">Filters</span>
                   {activeFiltersCount > 0 && (
-                    <span className="w-4 h-4 rounded-full bg-[#D4AF37] text-black text-[9px] font-black flex items-center justify-center shrink-0">
+                    <span className="w-3.5 h-3.5 rounded-full bg-[#D4AF37] text-black text-[9px] font-black flex items-center justify-center shrink-0">
                       {activeFiltersCount}
                     </span>
                   )}
-                  <ChevronDown size={11} className={`transition-transform duration-200 shrink-0 ${showAdvancedFilters ? 'rotate-180' : ''}`} />
+                  <ChevronDown size={10} className={`transition-transform duration-200 shrink-0 ${showAdvancedFilters ? 'rotate-180' : ''}`} />
                 </button>
               </div>
 
@@ -375,8 +361,8 @@ export const ExpensesView: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => exportExpensesToCSV(filteredExpenses)}
-                  disabled={filteredExpenses.length === 0}
-                  className="h-10 px-3 sm:px-3.5 rounded-xl border border-gray-200 bg-[#F9FAFB] text-xs font-bold text-gray-800 hover:bg-gray-100 transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-40 shrink-0 shadow-xs"
+                  className="h-10 px-3 sm:px-3.5 rounded-xl border border-gray-200 bg-[#F9FAFB] text-[11px] sm:text-xs font-semibold text-gray-800 hover:bg-gray-100 transition-colors flex items-center gap-1.5 cursor-pointer shrink-0 shadow-xs active:scale-95"
+                  title="Export expenses to CSV"
                 >
                   <Download size={13} />
                   <span className="hidden sm:inline">Export</span> CSV
@@ -414,7 +400,7 @@ export const ExpensesView: React.FC = () => {
                   )}
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {/* From Date */}
                   <div>
                     <label className="text-[10px] font-bold text-gray-500 uppercase block mb-1">
@@ -425,7 +411,11 @@ export const ExpensesView: React.FC = () => {
                         type="date"
                         value={fromDate}
                         onChange={(e) => {
-                          setFromDate(e.target.value)
+                          const val = e.target.value
+                          setFromDate(val)
+                          if (toDate && val && val > toDate) {
+                            setToDate(val)
+                          }
                           setActivePreset('custom')
                         }}
                         className="w-full h-10 pl-9 pr-3 rounded-xl border border-gray-200 bg-[#F9FAFB] text-xs font-semibold text-gray-800 outline-none focus:border-[#D4AF37] focus:bg-white"
@@ -444,33 +434,16 @@ export const ExpensesView: React.FC = () => {
                         type="date"
                         value={toDate}
                         onChange={(e) => {
-                          setToDate(e.target.value)
+                          const val = e.target.value
+                          setToDate(val)
+                          if (fromDate && val && val < fromDate) {
+                            setFromDate(val)
+                          }
                           setActivePreset('custom')
                         }}
                         className="w-full h-10 pl-9 pr-3 rounded-xl border border-gray-200 bg-[#F9FAFB] text-xs font-semibold text-gray-800 outline-none focus:border-[#D4AF37] focus:bg-white"
                       />
                       <Calendar size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-                    </div>
-                  </div>
-
-                  {/* Payment Mode */}
-                  <div>
-                    <label className="text-[10px] font-bold text-gray-500 uppercase block mb-1">
-                      Payment Mode
-                    </label>
-                    <div className="relative">
-                      <select
-                        value={selectedPaymentMode}
-                        onChange={(e) => setSelectedPaymentMode(e.target.value)}
-                        className="w-full h-10 appearance-none pl-3 pr-7 rounded-xl bg-[#F9FAFB] border border-gray-200 text-xs font-semibold text-gray-800 focus:outline-none focus:border-[#D4AF37] cursor-pointer hover:bg-gray-100 transition-colors"
-                      >
-                        <option value="all">All Payment Modes</option>
-                        <option value="cash">Cash</option>
-                        <option value="upi">UPI / QR</option>
-                        <option value="card">Credit / Debit Card</option>
-                        <option value="bank_transfer">Bank Transfer / NetBanking</option>
-                      </select>
-                      <ChevronDown size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
                     </div>
                   </div>
                 </div>

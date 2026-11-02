@@ -2,6 +2,7 @@ import { jsPDF } from 'jspdf'
 import html2canvas from 'html2canvas'
 import { BRAND_ADDRESS, BRAND_EN, BRAND_PHONE_DISPLAY } from './brand'
 import { formatCurrency, formatQuantityDisplay, normalizeStructuredOrderItem, formatInvoiceNo } from './retail'
+import { formatPhone } from './phone'
 import { LOGO_BASE64 } from './logoBase64'
 
 export type InvoicePdfData = {
@@ -72,7 +73,7 @@ export function createInvoicePdf(data: InvoicePdfData): Blob {
   y += 28
 
   const customerName = String(data.customerName || 'Walk-in Customer').trim()
-  const customerPhone = String(data.phone || '—').trim()
+  const customerPhone = formatPhone(data.phone)
   const customerAddress = String(data.address || '').trim()
   const customerNameLines = doc.splitTextToSize(customerName, 165) as string[]
   const customerAddressLines = customerAddress
@@ -176,16 +177,10 @@ export async function invoicePdfFileFromElement(
   await document.fonts?.ready
 
   const invoiceRoot = (element.querySelector('#invoice-print-root') as HTMLElement) || element
-  const baseWidth = invoiceRoot.offsetWidth || element.offsetWidth || 680
-  const targetMinHeight = Math.max(960, Math.round(baseWidth * (297 / 210)))
 
-  const prevElementMinHeight = element.style.minHeight
-  const prevRootMinHeight = invoiceRoot.style.minHeight
-
-  element.style.minHeight = `${targetMinHeight}px`
-  if (invoiceRoot !== element) {
-    invoiceRoot.style.minHeight = `${targetMinHeight}px`
-  }
+  // Capture at real DOM size — do NOT force a minimum height that causes multi-page output
+  const prevOverflow = (element as HTMLElement).style.overflow
+  element.style.overflow = 'visible'
 
   try {
     const canvas = await html2canvas(element, {
@@ -194,33 +189,22 @@ export async function invoicePdfFileFromElement(
       useCORS: true,
       logging: false,
       windowWidth: element.scrollWidth,
-      windowHeight: Math.max(element.scrollHeight, targetMinHeight),
+      windowHeight: element.scrollHeight,
     })
 
-    const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' })
-    const pageWidth = 210
-    const pageHeight = 297
-    const imageHeight = (canvas.height * pageWidth) / canvas.width
-    const image = canvas.toDataURL('image/png')
+    // Compute real content height in mm at A4 width
+    const pageWidthMm = 210
+    const imageHeightMm = (canvas.height * pageWidthMm) / canvas.width
 
-    if (imageHeight <= pageHeight + 10) {
-      doc.addImage(image, 'PNG', 0, 0, pageWidth, pageHeight, undefined, 'FAST')
-    } else {
-      let offset = 0
-      let page = 0
-      while (offset < imageHeight) {
-        if (page > 0) doc.addPage()
-        doc.addImage(image, 'PNG', 0, -offset, pageWidth, imageHeight, undefined, 'FAST')
-        offset += pageHeight
-        page += 1
-      }
-    }
+    // If the invoice fits within one A4 page (or is close), clamp it to A4
+    // Otherwise, create a custom-height single page so it never cuts mid-content
+    const pdfHeight = imageHeightMm <= 297 ? 297 : imageHeightMm
+
+    const doc = new jsPDF({ unit: 'mm', format: [pageWidthMm, pdfHeight], orientation: 'portrait' })
+    doc.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, pageWidthMm, imageHeightMm, undefined, 'FAST')
 
     return new File([doc.output('blob')], `Invoice-${formattedNo}.pdf`, { type: 'application/pdf' })
   } finally {
-    element.style.minHeight = prevElementMinHeight
-    if (invoiceRoot !== element) {
-      invoiceRoot.style.minHeight = prevRootMinHeight
-    }
+    element.style.overflow = prevOverflow
   }
 }

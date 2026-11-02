@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase'
+import { normalizeBarcode } from '../lib/barcode'
 
 export interface BarcodeRegistryRecord {
   id: string
@@ -80,25 +81,45 @@ export const barcodeService = {
    * Lookup barcode value in registry and resolve product + variant info.
    */
   async lookupBarcode(barcodeValue: string): Promise<BarcodeRegistryRecord | null> {
-    const cleanValue = barcodeValue.trim()
+    const cleanValue = normalizeBarcode(barcodeValue)
     if (!cleanValue) return null
 
-    // 1. Direct registry lookup
-    const { data, error } = await supabase
-      .from('barcode_registry')
-      .select(`
-        id, barcode_value, entity_type, product_id, variant_id, is_active, created_by_name, created_at, updated_at,
-        product:products (id, name, name_ta, price, offer_price, image_url, category),
-        variant:product_variants (id, variant_name, price, stock, sku)
-      `)
-      .eq('barcode_value', cleanValue)
-      .eq('is_active', true)
-      .maybeSingle()
+    // Case-insensitive exact match: escape "_" so ILIKE doesn't treat it as a wildcard
+    const pattern = cleanValue.replace(/[\\%_]/g, '\\$&')
 
-    if (error) {
-      console.warn('[barcodeService.lookupBarcode] Query error:', error)
+    // Run all three lookups at once instead of one after another (saves two round trips on a miss).
+    // limit(1) instead of maybeSingle(): maybeSingle() errors and returns null when a code
+    // appears on more than one row, which showed up as "not recognized".
+    const [registryRes, variantRes, productRes] = await Promise.all([
+      supabase
+        .from('barcode_registry')
+        .select(`
+          id, barcode_value, entity_type, product_id, variant_id, is_active, created_by_name, created_at, updated_at,
+          product:products (id, name, name_ta, price, offer_price, image_url, category),
+          variant:product_variants (id, variant_name, price, stock, sku)
+        `)
+        .ilike('barcode_value', pattern)
+        .eq('is_active', true)
+        .order('updated_at', { ascending: false })
+        .limit(1),
+      supabase
+        .from('product_variants')
+        .select('id, product_id, variant_name, price, stock, sku, barcode, product:products (id, name, name_ta, price, offer_price, image_url, category)')
+        .ilike('barcode', pattern)
+        .limit(1),
+      supabase
+        .from('products')
+        .select('id, name, name_ta, price, offer_price, image_url, category, barcode, stock_quantity')
+        .ilike('barcode', pattern)
+        .limit(1),
+    ])
+
+    for (const res of [registryRes, variantRes, productRes]) {
+      if (res.error) console.warn('[barcodeService.lookupBarcode] Query error:', res.error)
     }
 
+    // 1. Barcode registry (source of truth)
+    const data = registryRes.data?.[0]
     if (data) {
       // Cast array-joined relations if Supabase returned them as single objects
       const p = Array.isArray(data.product) ? data.product[0] : data.product
@@ -110,13 +131,8 @@ export const barcodeService = {
       } as BarcodeRegistryRecord
     }
 
-    // 2. Fallback: Check product_variants.barcode
-    const { data: varData } = await supabase
-      .from('product_variants')
-      .select('id, product_id, variant_name, price, stock, sku, barcode, product:products (id, name, name_ta, price, offer_price, image_url, category)')
-      .eq('barcode', cleanValue)
-      .maybeSingle()
-
+    // 2. Fallback: product_variants.barcode
+    const varData = variantRes.data?.[0]
     if (varData) {
       const p = Array.isArray(varData.product) ? varData.product[0] : varData.product
       return {
@@ -140,13 +156,8 @@ export const barcodeService = {
       } as BarcodeRegistryRecord
     }
 
-    // 3. Fallback: Check products.barcode
-    const { data: prodData } = await supabase
-      .from('products')
-      .select('id, name, name_ta, price, offer_price, image_url, category, barcode, stock_quantity')
-      .eq('barcode', cleanValue)
-      .maybeSingle()
-
+    // 3. Fallback: products.barcode
+    const prodData = productRes.data?.[0]
     if (prodData) {
       return {
         id: `prod-${prodData.id}`,

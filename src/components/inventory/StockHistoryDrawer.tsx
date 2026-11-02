@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { X, History, ArrowUpRight, ArrowDownRight, RefreshCw } from 'lucide-react'
 import { inventoryService, type InventoryMovement, type InventoryStockItem } from '../../services/inventoryService'
 import { BRAND_EN } from '../../lib/brand'
+import { lockScroll, unlockScroll } from '../../lib/scrollLock'
 
 export interface StockHistoryDrawerProps {
   isOpen: boolean
@@ -61,12 +62,12 @@ export const StockHistoryDrawer: React.FC<StockHistoryDrawerProps> = ({
   // Lock background scroll when drawer is open
   useEffect(() => {
     if (isOpen) {
-      document.body.style.overflow = 'hidden'
+      lockScroll()
     } else {
-      document.body.style.overflow = ''
+      unlockScroll()
     }
     return () => {
-      document.body.style.overflow = ''
+      unlockScroll()
     }
   }, [isOpen])
 
@@ -128,7 +129,7 @@ export const StockHistoryDrawer: React.FC<StockHistoryDrawerProps> = ({
           )}
           <div className="mt-2 flex items-center justify-between text-xs font-semibold text-gray-700">
             <span>Live Stock: <strong className="text-black text-sm">{item.stock} Units</strong></span>
-            {item.barcode && <span>Barcode: <strong className="font-mono text-black">{item.barcode}</strong></span>}
+            {item.barcode && <span className="whitespace-nowrap">Barcode: <strong className="font-mono text-black select-all">{item.barcode}</strong></span>}
           </div>
         </div>
 

@@ -6,6 +6,7 @@ import {
   type LabelSizeConfig,
   renderBarcodeSvg,
 } from '../../lib/barcode'
+import { lockScroll, unlockScroll } from '../../lib/scrollLock'
 
 interface BarcodeSheetPreviewModalProps {
   isOpen: boolean
@@ -73,15 +74,14 @@ export const BarcodeSheetPreviewModal: React.FC<BarcodeSheetPreviewModalProps> =
   // Lock body scrolling and close on Escape
   useEffect(() => {
     if (!isOpen) return
-    const originalOverflow = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
+    lockScroll()
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose()
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => {
-      document.body.style.overflow = originalOverflow
+      unlockScroll()
       window.removeEventListener('keydown', handleKeyDown)
     }
   }, [isOpen, onClose])
@@ -97,7 +97,7 @@ export const BarcodeSheetPreviewModal: React.FC<BarcodeSheetPreviewModalProps> =
           <div>
             <h3 className="text-sm sm:text-base font-black tracking-wide text-white">Print Preview</h3>
             <p className="text-[11px] sm:text-xs text-[#D4AF37] font-semibold">
-              {individualLabels.length} Labels (1 Barcode Per Page • {sizeConfig.name} • {sizeConfig.widthMm} × {sizeConfig.heightMm} mm)
+              {individualLabels.length} Labels ({Math.max(1, sizeConfig.labelsPerRow || 1)} Per Row/Page • {sizeConfig.name} • {sizeConfig.widthMm} × {sizeConfig.heightMm} mm)
             </p>
           </div>
           <button

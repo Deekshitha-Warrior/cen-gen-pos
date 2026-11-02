@@ -95,15 +95,14 @@ const saveLocalCategories = (cats: ExpenseCategory[]) => {
   }
 }
 
+import { getDateRange, isInRange } from '../lib/dateRange'
+
 function calculateMetricsFromList(expenses: ExpenseRecord[]): ExpenseSummaryMetrics {
-  const todayStr = new Date().toISOString().slice(0, 10)
   const now = new Date()
-  const dayOfWeek = (now.getDay() + 6) % 7 // Monday = 0
-  const monday = new Date(now)
-  monday.setDate(now.getDate() - dayOfWeek)
-  const weekStartStr = monday.toISOString().slice(0, 10)
-  const monthStartStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
-  const yearStartStr = `${now.getFullYear()}-01-01`
+  const todayRange = getDateRange('today', now)
+  const weekRange = getDateRange('week', now)
+  const monthRange = getDateRange('month', now)
+  const yearRange = getDateRange('year', now)
 
   let today = 0
   let this_week = 0
@@ -114,10 +113,11 @@ function calculateMetricsFromList(expenses: ExpenseRecord[]): ExpenseSummaryMetr
   for (const exp of expenses) {
     const amt = Number(exp.amount) || 0
     total_all_time += amt
-    if (exp.expense_date === todayStr) today += amt
-    if (exp.expense_date >= weekStartStr && exp.expense_date <= todayStr) this_week += amt
-    if (exp.expense_date >= monthStartStr && exp.expense_date <= todayStr) this_month += amt
-    if (exp.expense_date >= yearStartStr && exp.expense_date <= todayStr) this_year += amt
+    const dateVal = exp.expense_date || exp.created_at
+    if (isInRange(dateVal, todayRange)) today += amt
+    if (isInRange(dateVal, weekRange)) this_week += amt
+    if (isInRange(dateVal, monthRange)) this_month += amt
+    if (isInRange(dateVal, yearRange)) this_year += amt
   }
 
   return { today, this_week, this_month, this_year, total_all_time }
@@ -490,21 +490,24 @@ export const expenseService = {
 // 6. CSV Ledger Export Utility
 export function exportExpensesToCSV(expenses: ExpenseRecord[]): void {
   const headers = ['Date', 'Category', 'Description', 'Amount (INR)', 'Recorded By']
-  const rows = expenses.map((e) => [
-    e.expense_date,
+  const rows = (expenses || []).map((e) => [
+    e.expense_date || '',
     `"${(e.category_name || 'Uncategorized').replace(/"/g, '""')}"`,
     `"${(e.description || '').replace(/"/g, '""')}"`,
     Number(e.amount || 0).toFixed(2),
     `"${(e.recorded_by_name || 'Staff').replace(/"/g, '""')}"`,
   ])
+  const csvContent = '\uFEFF' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\r\n')
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+  const filename = `CLAD-Expenses-${new Date().toISOString().slice(0, 10)}.csv`
+  const url = URL.createObjectURL(blob)
 
-  const csvContent =
-    'data:text/csv;charset=utf-8,\uFEFF' +
-    [headers.join(','), ...rows.map((r) => r.join(','))].join('\n')
   const link = document.createElement('a')
-  link.href = encodeURI(csvContent)
-  link.download = `CLAD-Expenses-${new Date().toISOString().slice(0, 10)}.csv`
+  link.href = url
+  link.setAttribute('download', filename)
+  link.style.display = 'none'
   document.body.appendChild(link)
   link.click()
   document.body.removeChild(link)
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
 }

@@ -15,6 +15,8 @@ import {
   type InventoryMovement,
   type InventoryStockItem,
 } from '../../services/inventoryService'
+import { getDateRange } from '../../lib/dateRange'
+import { useDebouncedValue } from '../../lib/debounce'
 
 export const InventoryAnalyticsView: React.FC = () => {
   const [range, setRange] = useState<'all' | 'today' | 'week' | 'month'>('all')
@@ -30,22 +32,15 @@ export const InventoryAnalyticsView: React.FC = () => {
   })
   const [filterType, setFilterType] = useState<string>('all')
   const [search, setSearch] = useState('')
+  const [debouncedSearch] = useDebouncedValue(search, 300)
 
   const computeDateRange = () => {
-    const now = new Date()
-    if (range === 'today') {
-      const start = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString()
-      return { start, end: undefined }
+    if (range === 'all') return { start: undefined, end: undefined }
+    const dateRange = getDateRange(range, new Date())
+    return {
+      start: dateRange.start?.toISOString(),
+      end: dateRange.end?.toISOString(),
     }
-    if (range === 'week') {
-      const start = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString()
-      return { start, end: undefined }
-    }
-    if (range === 'month') {
-      const start = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
-      return { start, end: undefined }
-    }
-    return { start: undefined, end: undefined }
   }
 
   const loadAnalytics = useCallback(async () => {
@@ -68,8 +63,8 @@ export const InventoryAnalyticsView: React.FC = () => {
   // Filter movements for the table
   const filteredMovements = data.movements.filter((m) => {
     if (filterType !== 'all' && m.movement_type !== filterType) return false
-    if (search.trim()) {
-      const q = search.toLowerCase().trim()
+    if (debouncedSearch.trim()) {
+      const q = debouncedSearch.toLowerCase().trim()
       const prodName = m.product?.name?.toLowerCase() || ''
       const varName = m.variant?.variant_name?.toLowerCase() || ''
       const barcode = m.barcode_id?.toLowerCase() || ''
@@ -377,13 +372,13 @@ export const InventoryAnalyticsView: React.FC = () => {
           <div className="flex items-center gap-2">
             {/* Search */}
             <div className="relative flex-1 sm:w-56">
-              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
               <input
                 type="text"
                 placeholder="Search ledger..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="w-full pl-8 pr-3 py-1.5 rounded-lg border border-gray-300 bg-white text-xs font-bold text-gray-900 outline-none focus:border-[#0A0A0A]"
+                className="w-full pl-10 pr-3 py-1.5 rounded-lg border border-gray-300 bg-white text-[11px] sm:text-xs font-semibold text-gray-900 placeholder:text-gray-400 placeholder:font-normal outline-none focus:border-[#0A0A0A]"
               />
             </div>
 
@@ -391,7 +386,7 @@ export const InventoryAnalyticsView: React.FC = () => {
             <select
               value={filterType}
               onChange={(e) => setFilterType(e.target.value)}
-              className="h-8 px-2.5 rounded-lg border border-gray-300 bg-white text-xs font-bold text-gray-800 outline-none"
+              className="h-8 px-2.5 rounded-lg border border-gray-300 bg-white text-[11px] sm:text-xs font-semibold text-gray-800 outline-none"
             >
               <option value="all">All Types</option>
               <option value="INITIAL_BARCODE_STOCK">Intake</option>
@@ -416,7 +411,7 @@ export const InventoryAnalyticsView: React.FC = () => {
                   <th className="p-3">Date &amp; Time</th>
                   <th className="p-3">Type</th>
                   <th className="p-3">Product / Variant</th>
-                  <th className="p-3">Barcode</th>
+                  <th className="p-3 whitespace-nowrap min-w-[280px]">Barcode</th>
                   <th className="p-3 text-center">Qty Delta</th>
                   <th className="p-3 text-center">Before → After</th>
                   <th className="p-3">User</th>
@@ -447,7 +442,7 @@ export const InventoryAnalyticsView: React.FC = () => {
                         </div>
                       )}
                     </td>
-                    <td className="p-3 font-mono text-xs font-bold text-gray-700">
+                    <td className="p-3 font-mono text-xs font-bold text-gray-700 whitespace-nowrap select-all">
                       {m.barcode_id || '—'}
                     </td>
                     <td className="p-3 text-center font-black">

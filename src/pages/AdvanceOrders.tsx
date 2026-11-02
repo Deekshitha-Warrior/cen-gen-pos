@@ -1,18 +1,22 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
 import { createPortal } from 'react-dom'
-import { CalendarDays, CheckCircle2, Clock3, Download, Eye, FileText, MessageCircle, PackageCheck, Printer, RefreshCw, Search, X } from 'lucide-react'
+import { CalendarDays, CheckCircle2, Clock3, Download, Eye, FileText, MessageCircle, PackageCheck, Printer, RefreshCw, Search, Trash2, X } from 'lucide-react'
 import { supabase, isSupabaseConfigured } from '../lib/supabase'
 import { formatCurrency } from '../lib/retail'
 import { invoicePdfFile } from '../lib/invoicePdf'
 import { printThermalReceipt } from '../lib/thermalPrint'
 import { buildAdvanceDepositWhatsAppMessage, buildProfessionalWhatsAppMessage, publicInvoiceUrl } from '../lib/whatsappMessage'
-import { toWhatsAppUrl } from '../lib/phone'
+import { toWhatsAppUrl, formatPhone } from '../lib/phone'
+import { getDateRange, isInRange } from '../lib/dateRange'
+import { useDebouncedValue } from '../lib/debounce'
 import { advanceReceiptPdf, downloadFile, printAdvanceReceipt } from '../lib/advanceReceipt'
 import { useAdminAuthStore, useProductStore } from '../store/store'
+import { lockScroll, unlockScroll } from '../lib/scrollLock'
 import {
-  addAdvanceEvent, completeAdvanceOrder, createAdvanceOrder, getAdvanceOrderHistory, listAdvanceOrders, updateAdvanceStatus,
+  addAdvanceEvent, completeAdvanceOrder, createAdvanceOrder, deleteAdvanceOrder, getAdvanceOrderHistory, listAdvanceOrders, updateAdvanceStatus,
   type AdvanceOrder, type AdvancePayment, type AdvancePaymentMethod, type AdvanceStatus, type AdvanceTimeline,
 } from '../services/advanceOrderService'
+import { useVisualViewportHeight } from '../hooks/useVisualViewportHeight'
 
 // Custom Malaysian Ringgit icon
 const RMIcon = ({ size = 20, className = '' }: { size?: number; className?: string }) => (
@@ -37,12 +41,13 @@ const dateKey = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() 
 
 type AdvanceOrdersProps = {
   onOrderCompleted?: (order?: AdvanceOrder) => void
+  onOrderDeleted?: (completedOrderId?: string | null) => void
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) { return <label className="block"><span className="mb-1.5 block text-[11px] font-black uppercase tracking-wide text-[#6B7280]">{label}</span>{children}</label> }
 const inputClass = 'w-full rounded-xl border border-[#E5E7EB] bg-white px-3.5 py-2.5 text-sm text-[#273126] outline-none transition focus:border-[#7e22ce] focus:ring-2 focus:ring-violet-100'
 
-export default function AdvanceOrders({ onOrderCompleted }: AdvanceOrdersProps = {}) {
+export default function AdvanceOrders({ onOrderCompleted, onOrderDeleted }: AdvanceOrdersProps = {}) {
   const role = useAdminAuthStore(state => state.role)
   const products = useProductStore(state => state.products)
   const [orders, setOrders] = useState<AdvanceOrder[]>([])
@@ -53,6 +58,7 @@ export default function AdvanceOrders({ onOrderCompleted }: AdvanceOrdersProps =
   const [form, setForm] = useState(initialForm)
   const [saving, setSaving] = useState(false)
   const [search, setSearch] = useState('')
+  const [debouncedSearch] = useDebouncedValue(search, 300)
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [dateFilter, setDateFilter] = useState<DateFilter>('all')
   const [selected, setSelected] = useState<AdvanceOrder | null>(null)
@@ -66,6 +72,13 @@ export default function AdvanceOrders({ onOrderCompleted }: AdvanceOrdersProps =
   const [availableCoupons, setAvailableCoupons] = useState<{ code: string; percentage: number }[]>([])
   const [manualDiscount, setManualDiscount] = useState('')
   const [manualDiscountType, setManualDiscountType] = useState<'rm' | '%'>('rm')
+
+  const vvh = useVisualViewportHeight()
+  const modalHeightVar = vvh ? ({ '--modal-vvh': `${vvh}px` } as React.CSSProperties) : undefined
+  const overlayStyle: React.CSSProperties = {
+    ...(modalHeightVar ?? {}),
+    height: vvh ? `${vvh}px` : '100dvh',
+  }
 
   const load = useCallback(async () => {
     setLoading(true); setError('')
@@ -108,12 +121,12 @@ export default function AdvanceOrders({ onOrderCompleted }: AdvanceOrdersProps =
   useEffect(() => {
     const isAnyOpen = !!(selected || createOpen || paymentOrder)
     if (isAnyOpen) {
-      document.body.style.overflow = 'hidden'
+      lockScroll()
     } else {
-      document.body.style.overflow = ''
+      unlockScroll()
     }
     return () => {
-      document.body.style.overflow = ''
+      unlockScroll()
     }
   }, [selected, createOpen, paymentOrder])
 
@@ -131,8 +144,12 @@ export default function AdvanceOrders({ onOrderCompleted }: AdvanceOrdersProps =
     completed: orders.filter(o => o.status === 'completed').length,
   }), [orders])
 
+  const activeDateRange = useMemo(() => {
+    return getDateRange(dateFilter, new Date())
+  }, [dateFilter])
+
   const filtered = useMemo(() => orders.filter(order => {
-    const query = search.trim().toLowerCase()
+    const query = debouncedSearch.trim().toLowerCase()
     const searchable = [order.deposit_id, order.customer_name, order.phone, order.product_name, STATUS_LABELS[order.status]].join(' ').toLowerCase()
     if (query && !searchable.includes(query)) return false
     if (statusFilter === 'pending' && !['pending_deposit', 'waiting_final_payment'].includes(order.status)) return false
@@ -140,13 +157,10 @@ export default function AdvanceOrders({ onOrderCompleted }: AdvanceOrdersProps =
     if (statusFilter === 'completed' && order.status !== 'completed') return false
     if (statusFilter === 'cancelled' && order.status !== 'cancelled') return false
     if (dateFilter !== 'all') {
-      const created = new Date(order.created_at); const now = new Date()
-      if (dateFilter === 'today' && dateKey(created) !== dateKey(now)) return false
-      if (dateFilter === 'week' && created < new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6)) return false
-      if (dateFilter === 'month' && (created.getMonth() !== now.getMonth() || created.getFullYear() !== now.getFullYear())) return false
+      if (!isInRange(order.created_at, activeDateRange)) return false
     }
     return true
-  }), [orders, search, statusFilter, dateFilter])
+  }), [orders, debouncedSearch, statusFilter, dateFilter, activeDateRange])
 
   const create = async (event: FormEvent) => {
     event.preventDefault(); setSaving(true); setError(''); setNotice('')
@@ -167,7 +181,7 @@ export default function AdvanceOrders({ onOrderCompleted }: AdvanceOrdersProps =
         expectedDeliveryDate: created.expected_delivery_date,
         paymentMethod: form.paymentMethod,
       })
-      window.open(toWhatsAppUrl(created.phone, advanceMsg), '_blank', 'noopener,noreferrer')
+      window.location.href = toWhatsAppUrl(created.phone, advanceMsg)
     } catch (err) { setError(err instanceof Error ? err.message : 'Unable to create advance order') } finally { setSaving(false) }
   }
 
@@ -220,7 +234,7 @@ export default function AdvanceOrders({ onOrderCompleted }: AdvanceOrdersProps =
       remainingBalance: order.remaining_balance,
       expectedDeliveryDate: order.expected_delivery_date,
     })
-    window.open(toWhatsAppUrl(order.phone, message), '_blank', 'noopener,noreferrer')
+    window.location.href = toWhatsAppUrl(order.phone, message)
   }
 
   const whatsappInvoice = (order: AdvanceOrder) => {
@@ -231,11 +245,43 @@ export default function AdvanceOrders({ onOrderCompleted }: AdvanceOrdersProps =
       invoiceNumber: invNum,
       invoiceUrl: publicInvoiceUrl(invNum),
     })
-    window.open(toWhatsAppUrl(order.phone, message), '_blank', 'noopener,noreferrer')
+    window.location.href = toWhatsAppUrl(order.phone, message)
   }
 
   const addEvent = async (order: AdvanceOrder, eventType: string, label: string) => {
     try { await addAdvanceEvent(order.id, eventType, label); await openDetails(order); setNotice(`${label} added to ${order.deposit_id}.`) } catch (err) { setError(err instanceof Error ? err.message : 'Unable to add timeline event') }
+  }
+
+  const handleDeleteOrder = async (order: AdvanceOrder) => {
+    const isCompleted = order.status === 'completed'
+    const warningLines = [
+      `Delete advance order ${order.deposit_id} for ${order.customer_name}?`,
+      '',
+      isCompleted
+        ? `⚠️ This order is COMPLETED. Deleting it will also remove the linked invoice (${order.invoice_number ?? ''}) and deduct ${formatCurrency(order.total_amount)} from total revenue.`
+        : `This will permanently remove the deposit record. The deposit amount (${formatCurrency(order.deposit_amount)}) is NOT part of revenue, so there is no revenue impact.`,
+      '',
+      'This action cannot be undone.',
+    ]
+    if (!window.confirm(warningLines.join('\n'))) return
+
+    setError(''); setNotice('')
+    try {
+      setSaving(true)
+      await deleteAdvanceOrder(order)
+      setOrders(prev => prev.filter(o => o.id !== order.id))
+      if (selected?.id === order.id) setSelected(null)
+      onOrderDeleted?.(order.completed_order_id)
+      setNotice(
+        isCompleted
+          ? `Advance order ${order.deposit_id} and its invoice have been deleted. Revenue has been corrected.`
+          : `Advance order ${order.deposit_id} deleted.`
+      )
+    } catch (err: any) {
+      setError(err?.message || 'Failed to delete advance order.')
+    } finally {
+      setSaving(false)
+    }
   }
 
   const cards = [
@@ -251,12 +297,22 @@ export default function AdvanceOrders({ onOrderCompleted }: AdvanceOrdersProps =
     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{cards.map(([label, value, Icon, color]) => <div key={label} className="rounded-2xl border border-[#ECE9E2] bg-white p-4 shadow-sm"><div className="flex items-center justify-between"><div><p className="text-[11px] font-black uppercase tracking-wide text-[#879086]">{label}</p><p className="mt-2 text-2xl font-black text-[#273126]">{value}</p></div><div className={`rounded-xl p-3 ${color}`}><Icon size={21}/></div></div></div>)}</div>
     <div className="rounded-2xl border border-[#ECE9E2] bg-white p-4 shadow-sm"><div className="grid gap-3 lg:grid-cols-[1fr_auto_auto]"><label className="relative"><Search className="absolute left-3 top-3 text-[#9CA3AF]" size={17}/><input className={`${inputClass} pl-10`} value={search} onChange={e => setSearch(e.target.value)} placeholder="Search Deposit ID, customer, phone, product or status"/></label><div className="flex flex-wrap gap-2">{(['all','pending','ready','completed','cancelled'] as StatusFilter[]).map(value => <button key={value} onClick={() => setStatusFilter(value)} className={`rounded-lg px-3 py-2 text-xs font-black capitalize ${statusFilter === value ? 'bg-[#7e22ce] text-white' : 'bg-[#F5F3F7] text-[#626B61]'}`}>{value}</button>)}</div><select className={inputClass} value={dateFilter} onChange={e => setDateFilter(e.target.value as DateFilter)}><option value="all">All Dates</option><option value="today">Today</option><option value="week">This Week</option><option value="month">This Month</option></select></div></div>
     <div className="overflow-hidden rounded-2xl border border-[#ECE9E2] bg-white shadow-sm">
-      <div className="overflow-x-auto">
-        <table className="w-full text-left text-sm">
-          <thead className="bg-[#F8F7F4] text-[10px] font-black uppercase tracking-wider text-[#737B72]">
+      <div className="overflow-x-auto w-full invoice-billing-table-wrapper">
+        <table className="w-full min-w-[700px] text-left text-xs sm:text-sm invoice-billing-table">
+          <thead className="bg-[#F8F7F4] text-[9px] sm:text-[10px] font-black uppercase tracking-wider text-[#737B72]">
             <tr>
               {['Deposit ID / Created','Customer','Product','Total / Deposit / Balance','Delivery','Status','Actions'].map(h => (
-                <th key={h} className="px-4 py-3.5 whitespace-nowrap">{h}</th>
+                <th
+                  key={h}
+                  className={`px-2.5 py-2.5 sm:px-4 sm:py-3.5 ${
+                    h === 'Product'
+                      ? 'min-w-[120px] w-auto whitespace-normal invoice-product-col'
+                      : 'whitespace-nowrap'
+                  }`}
+                  style={h === 'Product' ? { minWidth: '120px', width: 'auto' } : undefined}
+                >
+                  {h}
+                </th>
               ))}
             </tr>
           </thead>
@@ -268,36 +324,62 @@ export default function AdvanceOrders({ onOrderCompleted }: AdvanceOrdersProps =
             ) : (
               filtered.map(order => (
                 <tr key={order.id} className="hover:bg-violet-50/30 transition-colors">
-                  <td className="px-4 py-3.5 align-middle whitespace-nowrap">
+                  <td className="px-2.5 py-2.5 sm:px-4 sm:py-3.5 align-middle whitespace-nowrap text-xs sm:text-sm">
                     <p className="font-black text-violet-700">{order.deposit_id}</p>
-                    <p className="text-[11px] text-[#8B9389]">
+                    <p className="text-[10px] sm:text-[11px] text-[#8B9389]">
                       {new Date(order.created_at).toLocaleDateString('en-IN')} • {new Date(order.created_at).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})}
                     </p>
                   </td>
-                  <td className="px-4 py-3.5 align-middle whitespace-nowrap">
+                  <td className="px-2.5 py-2.5 sm:px-4 sm:py-3.5 align-middle whitespace-nowrap text-xs sm:text-sm">
                     <p className="font-bold text-[#273126]">{order.customer_name}</p>
-                    <p className="text-xs text-[#727970]">{order.phone}</p>
+                    <p className="text-[11px] sm:text-xs text-[#727970]">{formatPhone(order.phone)}</p>
                   </td>
-                  <td className="max-w-[180px] px-4 py-3.5 align-middle">
-                    <p className="truncate font-semibold text-[#273126]">{order.product_name}</p>
-                    <p className="truncate text-xs text-[#858C83]">{order.category || 'Uncategorised'}</p>
+                  <td
+                    className="min-w-[120px] w-auto px-2.5 py-2.5 sm:px-4 sm:py-3.5 align-middle invoice-product-cell"
+                    style={{ minWidth: '120px', width: 'auto' }}
+                  >
+                    <div style={{ whiteSpace: 'normal', wordBreak: 'normal', overflowWrap: 'break-word', hyphens: 'none' }}>
+                      <p
+                        className="font-semibold text-[#273126] text-xs sm:text-sm invoice-product-qty-name"
+                        style={{
+                          display: 'inline',
+                          whiteSpace: 'normal',
+                          wordBreak: 'normal',
+                          overflowWrap: 'break-word',
+                          hyphens: 'none',
+                        }}
+                      >
+                        {order.product_name}
+                      </p>
+                      <p
+                        className="text-[11px] sm:text-xs text-[#858C83] mt-0.5 invoice-product-desc"
+                        style={{
+                          whiteSpace: 'normal',
+                          wordBreak: 'normal',
+                          overflowWrap: 'break-word',
+                          hyphens: 'none',
+                        }}
+                      >
+                        {order.category || 'Uncategorised'}
+                      </p>
+                    </div>
                   </td>
-                  <td className="px-4 py-3.5 text-xs align-middle whitespace-nowrap">
+                  <td className="px-2.5 py-2.5 sm:px-4 sm:py-3.5 text-[11px] sm:text-xs align-middle whitespace-nowrap">
                     <p className="text-gray-700">Total: <b>{formatCurrency(order.total_amount)}</b></p>
                     <p className="text-violet-700">Paid: <b>{formatCurrency(order.deposit_amount)}</b></p>
                     <p className="text-red-600 font-bold">Balance: <b>{formatCurrency(order.remaining_balance)}</b></p>
                   </td>
-                  <td className="px-4 py-3.5 align-middle whitespace-nowrap">
-                    <div className="flex items-center gap-1.5 text-xs font-semibold text-gray-700">
-                      <CalendarDays size={14} className="text-gray-400 shrink-0" />
+                  <td className="px-2.5 py-2.5 sm:px-4 sm:py-3.5 align-middle whitespace-nowrap text-xs sm:text-sm">
+                    <div className="flex items-center gap-1.5 text-[11px] sm:text-xs font-semibold text-gray-700">
+                      <CalendarDays size={13} className="text-gray-400 shrink-0" />
                       <span>{new Date(`${order.expected_delivery_date}T00:00:00`).toLocaleDateString('en-IN')}</span>
                     </div>
                   </td>
-                  <td className="px-4 py-3.5 align-middle whitespace-nowrap">
+                  <td className="px-2.5 py-2.5 sm:px-4 sm:py-3.5 align-middle whitespace-nowrap">
                     <select
                       value={order.status}
                       onChange={e => void changeStatus(order, e.target.value as AdvanceStatus)}
-                      className={`rounded-xl border px-2.5 py-1.5 text-xs font-black outline-none shadow-xs transition-colors cursor-pointer ${STATUS_STYLES[order.status]}`}
+                      className={`rounded-xl border px-2 py-1 sm:px-2.5 sm:py-1.5 text-[11px] sm:text-xs font-black outline-none shadow-xs transition-colors cursor-pointer ${STATUS_STYLES[order.status]}`}
                     >
                       <option value="pending_deposit">Pending Deposit</option>
                       <option value="waiting_final_payment">Waiting for Final Payment</option>
@@ -306,14 +388,14 @@ export default function AdvanceOrders({ onOrderCompleted }: AdvanceOrdersProps =
                       <option value="cancelled">Cancelled</option>
                     </select>
                   </td>
-                  <td className="px-4 py-3.5 align-middle whitespace-nowrap">
-                    <div className="flex items-center gap-1.5">
+                  <td className="px-2.5 py-2.5 sm:px-4 sm:py-3.5 align-middle whitespace-nowrap">
+                    <div className="flex items-center gap-1 sm:gap-1.5">
                       {/* Receive Balance Button (if balance is due) */}
                       {order.status !== 'completed' && order.status !== 'cancelled' && (
                         <button
                           type="button"
                           onClick={() => setPaymentOrder(order)}
-                          className="flex items-center gap-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 py-1.5 text-xs font-black shadow-xs transition-all active:scale-95 cursor-pointer whitespace-nowrap"
+                          className="flex items-center gap-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white px-2 py-1 sm:px-2.5 sm:py-1.5 text-[11px] sm:text-xs font-black shadow-xs transition-all active:scale-95 cursor-pointer whitespace-nowrap"
                           title="Receive Remaining Balance"
                         >
                           <span>Receive Balance</span>
@@ -359,6 +441,17 @@ export default function AdvanceOrders({ onOrderCompleted }: AdvanceOrdersProps =
                       >
                         <MessageCircle size={15}/>
                       </button>
+
+                      {/* Delete Order */}
+                      <button
+                        type="button"
+                        onClick={() => void handleDeleteOrder(order)}
+                        disabled={saving}
+                        className="w-8 h-8 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 flex items-center justify-center transition-colors cursor-pointer shrink-0 disabled:opacity-40"
+                        title={order.status === 'completed' ? "Delete Order & Remove from Revenue" : "Delete Advance Order"}
+                      >
+                        <Trash2 size={14}/>
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -370,8 +463,11 @@ export default function AdvanceOrders({ onOrderCompleted }: AdvanceOrdersProps =
     </div>
 
     {createOpen && createPortal(
-      <div className="fixed inset-0 top-0 left-0 right-0 bottom-0 w-screen h-screen h-[100dvh] z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
-        <form onSubmit={create} className="max-h-[92vh] w-full max-w-4xl overflow-hidden overflow-y-auto rounded-3xl bg-white p-6 shadow-2xl border border-[#E8D399]">
+      <div
+        className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-150"
+        style={overlayStyle}
+      >
+        <form onSubmit={create} className="max-h-[92dvh] w-full max-w-4xl overflow-hidden overflow-y-auto rounded-3xl bg-white p-6 shadow-2xl border border-[#E8D399]">
           <div className="mb-5 flex items-center justify-between">
             <div>
               <h3 className="text-xl font-black text-[#0A0A0A]">Create Advance Order</h3>
@@ -407,8 +503,11 @@ export default function AdvanceOrders({ onOrderCompleted }: AdvanceOrdersProps =
     )}
 
     {paymentOrder && createPortal(
-      <div className="fixed inset-0 top-0 left-0 right-0 bottom-0 w-screen h-screen h-[100dvh] z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
-        <form onSubmit={receivePayment} className="w-full max-w-md max-h-[92vh] overflow-hidden overflow-y-auto rounded-3xl bg-white p-6 shadow-2xl border border-[#E8D399]">
+      <div
+        className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-150"
+        style={overlayStyle}
+      >
+        <form onSubmit={receivePayment} className="w-full max-w-md max-h-[92dvh] overflow-hidden overflow-y-auto rounded-3xl bg-white p-6 shadow-2xl border border-[#E8D399]">
           <div className="mb-5 flex items-start justify-between">
             <div>
               <p className="text-xs font-black uppercase tracking-wider text-emerald-600 font-mono">{paymentOrder.deposit_id}</p>
@@ -489,12 +588,12 @@ export default function AdvanceOrders({ onOrderCompleted }: AdvanceOrdersProps =
     )}
 
     {selected && createPortal(
-      <div className="fixed inset-0 top-0 left-0 right-0 bottom-0 w-screen h-screen h-[100dvh] z-[9999] flex justify-end bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
+      <div className="fixed inset-0 z-[9999] flex justify-end bg-black/60 backdrop-blur-xs animate-in fade-in duration-150" style={overlayStyle}>
         {/* Backdrop click dismiss */}
         <div className="absolute inset-0" onClick={() => setSelected(null)} />
 
         {/* Drawer Panel covering full view height */}
-        <div className="relative z-10 h-screen h-[100dvh] w-full max-w-xl bg-white shadow-2xl flex flex-col border-l border-[#E8D399] animate-in slide-in-from-right duration-200">
+        <div className="relative z-10 w-full max-w-xl bg-white shadow-2xl flex flex-col border-l border-[#E8D399] animate-in slide-in-from-right duration-200" style={{ height: vvh ? `${vvh}px` : '100dvh' }}>
           {/* Sticky Drawer Header */}
           <div className="shrink-0 px-6 py-4 border-b border-gray-200 bg-[#0A0A0A] text-white flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -526,7 +625,7 @@ export default function AdvanceOrders({ onOrderCompleted }: AdvanceOrdersProps =
             <div className="grid grid-cols-2 gap-3">
               {[
                 ['Customer', selected.customer_name],
-                ['Phone', selected.phone],
+                ['Phone', formatPhone(selected.phone)],
                 ['Address', selected.address || '-'],
                 ['Product', selected.product_name],
                 ['Category', selected.category || '-'],
@@ -619,7 +718,10 @@ export default function AdvanceOrders({ onOrderCompleted }: AdvanceOrdersProps =
           </div>
 
           {/* Sticky Drawer Footer */}
-          <div className="shrink-0 px-6 py-4 border-t border-gray-200 bg-[#FBFAF6] flex items-center justify-between gap-3">
+          <div
+            className="shrink-0 px-6 py-4 border-t border-gray-200 bg-[#FBFAF6] flex items-center justify-between gap-3 sticky bottom-0 z-20"
+            style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}
+          >
             <div className="flex gap-2">
               <button
                 type="button"
@@ -636,6 +738,15 @@ export default function AdvanceOrders({ onOrderCompleted }: AdvanceOrdersProps =
                 title="Share via WhatsApp"
               >
                 <MessageCircle size={14} /> WhatsApp
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleDeleteOrder(selected)}
+                disabled={saving}
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-red-50 text-red-600 border border-red-200 text-xs font-bold hover:bg-red-100 cursor-pointer transition shadow-xs disabled:opacity-40"
+                title={selected.status === 'completed' ? 'Delete Order & Remove from Revenue' : 'Delete Advance Order'}
+              >
+                <Trash2 size={14} /> Delete
               </button>
             </div>
             <button

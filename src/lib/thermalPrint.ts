@@ -1,6 +1,7 @@
 import { BRAND_ADDRESS, BRAND_EMAIL, BRAND_EN, BRAND_INSTAGRAM, BRAND_PRIMARY_PHONE_DISPLAY } from './brand'
 import { LOGO_BASE64 } from './logoBase64'
 import { formatCurrency, formatInvoiceNo } from './retail'
+import { formatPhone } from './phone'
 
 export interface ThermalReceiptData {
   invoiceNo: string
@@ -28,9 +29,11 @@ export interface ThermalReceiptData {
 
 export function printThermalReceipt(data: ThermalReceiptData) {
   try {
-    // Create an isolated print iframe protected from third-party extension observers
+    // Create an isolated print iframe protected from third-party extension observers.
+    // iOS Safari refuses to render/print an iframe that has zero width/height or
+    // visibility:hidden, so it is pushed off-screen with real dimensions instead.
     const iframe = document.createElement('iframe')
-    iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden;'
+    iframe.style.cssText = 'position:fixed;left:-9999px;top:0;width:302px;height:600px;border:0;'
     iframe.setAttribute('aria-hidden', 'true')
     iframe.setAttribute('tabindex', '-1')
     iframe.setAttribute('data-gramm', 'false')
@@ -50,18 +53,6 @@ export function printThermalReceipt(data: ThermalReceiptData) {
       catch { return new Date().toLocaleString('en-IN') }
     })()
 
-    const formatCustomerPhone = (phone?: string): string => {
-      if (!phone) return ''
-      const trimmed = phone.trim()
-      const digits = trimmed.replace(/\D/g, '')
-      if (digits.length === 12 && digits.startsWith('91')) {
-        return `+91 ${digits.slice(2, 7)} ${digits.slice(7)}`
-      }
-      if (digits.length === 10) {
-        return `+91 ${digits.slice(0, 5)} ${digits.slice(5)}`
-      }
-      return trimmed
-    }
 
     const html = `
       <!DOCTYPE html>
@@ -140,7 +131,7 @@ export function printThermalReceipt(data: ThermalReceiptData) {
           <div style="font-weight: bold;">Inv: #${formatInvoiceNo(data.invoiceNo)}</div>
           <div style="font-weight: bold;">Date: ${dateStr}</div>
           ${data.customerName ? `<div style="font-weight: bold;">Name: ${data.customerName}</div>` : ''}
-          ${data.phone ? `<div style="font-weight: bold;">Tel: ${formatCustomerPhone(data.phone)}</div>` : ''}
+          ${data.phone ? `<div style="font-weight: bold;">Tel: ${formatPhone(data.phone)}</div>` : ''}
         </div>
 
         <table class="border-bottom" style="width: 100%; table-layout: fixed; border-collapse: collapse; font-weight: bold;">

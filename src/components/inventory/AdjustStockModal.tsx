@@ -13,6 +13,8 @@ import {
 } from 'lucide-react'
 import { inventoryService, type InventoryStockItem } from '../../services/inventoryService'
 import { BRAND_EN } from '../../lib/brand'
+import { useVisualViewportHeight } from '../../hooks/useVisualViewportHeight'
+import { lockScroll, unlockScroll } from '../../lib/scrollLock'
 
 export interface AdjustStockModalProps {
   isOpen: boolean
@@ -54,18 +56,23 @@ export const AdjustStockModal: React.FC<AdjustStockModalProps> = ({
   // Close on Escape key & lock body scrolling when open
   useEffect(() => {
     if (!isOpen) return
-    const originalOverflow = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
+    lockScroll()
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose()
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => {
-      document.body.style.overflow = originalOverflow
+      unlockScroll()
       window.removeEventListener('keydown', handleKeyDown)
     }
   }, [isOpen, onClose])
+
+  // iOS Safari keeps 100dvh at its pre-keyboard value, so the modal (and its
+  // bottom Save button) must be re-measured against the visual viewport to stay
+  // fully visible once the on-screen keyboard opens.
+  const vvh = useVisualViewportHeight()
+  const modalHeightVar = vvh ? ({ '--modal-vvh': `${vvh}px` } as React.CSSProperties) : undefined
 
   if (!isOpen || !item) return null
 
@@ -149,10 +156,24 @@ export const AdjustStockModal: React.FC<AdjustStockModalProps> = ({
     }
   }
 
+  // Use inline style for dvh-based heights so they work regardless of whether
+  // Tailwind purges the arbitrary class. On Android Chrome, 100dvh correctly
+  // excludes the browser toolbar, preventing the footer from being clipped.
+  const overlayStyle: React.CSSProperties = {
+    ...(modalHeightVar ?? {}),
+    height: vvh ? `${vvh}px` : '100dvh',
+  }
+
   return createPortal(
-    <div className="fixed inset-0 top-0 left-0 right-0 bottom-0 w-screen h-screen h-[100dvh] z-[9999] flex items-center justify-center bg-black/75 backdrop-blur-sm p-0 sm:p-4 overflow-hidden animate-in fade-in duration-150">
+    <div
+      className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/75 backdrop-blur-sm p-0 sm:p-4 overflow-hidden animate-in fade-in duration-150"
+      style={overlayStyle}
+    >
       <div className="absolute inset-0" onClick={onClose} />
-      <div className="relative z-10 bg-white rounded-none sm:rounded-3xl max-w-lg w-full h-screen h-[100dvh] sm:h-auto sm:max-h-[92vh] border-0 sm:border border-[#E8D399] shadow-2xl overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-200">
+      <div
+        className="relative z-10 bg-white rounded-none sm:rounded-3xl max-w-lg w-full sm:h-auto sm:max-h-[92dvh] border-0 sm:border border-[#E8D399] shadow-2xl overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-200"
+        style={{ height: typeof window !== 'undefined' && window.innerWidth < 640 ? (vvh ? `${vvh}px` : '100dvh') : undefined }}
+      >
         {/* Header */}
         <div className="shrink-0 bg-[#0A0A0A] px-4 py-3 sm:px-5 sm:py-3.5 border-b border-[#D4AF37]/30 flex items-center justify-between text-white">
           <div className="flex items-center gap-2.5">
@@ -557,19 +578,22 @@ export const AdjustStockModal: React.FC<AdjustStockModalProps> = ({
             </div>
           </div>
 
-          {/* Fixed Footer at the bottom */}
-          <div className="shrink-0 px-4 py-3 sm:px-5 sm:py-3 bg-[#FBFAF6] border-t border-gray-200 flex items-center justify-end gap-2.5 pb-[calc(env(safe-area-inset-bottom)+0.75rem)]">
+          {/* Sticky Footer at the bottom */}
+          <div
+            className="shrink-0 sticky bottom-0 z-20 px-4 py-3 sm:px-5 sm:py-3 bg-[#FBFAF6] border-t border-[#E8D399] flex items-center justify-between sm:justify-end gap-2.5"
+            style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
+          >
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 rounded-xl border border-gray-300 text-gray-700 text-xs font-bold hover:bg-gray-100 transition-colors cursor-pointer"
+              className="flex-1 sm:flex-none px-4 py-3 sm:px-4 sm:py-2 rounded-xl border border-gray-300 text-gray-700 text-xs font-bold hover:bg-gray-100 transition-colors cursor-pointer min-h-[48px] sm:min-h-0 flex items-center justify-center"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={submitting || delta === 0}
-              className={`flex items-center gap-1.5 px-5 py-2 rounded-xl text-xs font-black transition-all shadow-md disabled:opacity-50 cursor-pointer ${
+              className={`flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-5 py-3 sm:px-5 sm:py-2 rounded-xl text-xs font-black transition-all shadow-md disabled:opacity-50 cursor-pointer min-h-[48px] sm:min-h-0 ${
                 mode === 'RESTOCK'
                   ? 'bg-[#0A0A0A] border border-[#D4AF37] text-[#D4AF37] hover:bg-[#1A1A1A]'
                   : mode === 'REMOVE'

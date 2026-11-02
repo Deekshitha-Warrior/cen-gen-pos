@@ -28,7 +28,8 @@ import {
   formatInvoiceNo,
 } from '../lib/retail'
 import { buildProfessionalWhatsAppMessage, buildAdvanceDepositWhatsAppMessage, publicInvoiceUrl } from '../lib/whatsappMessage'
-import { normalizePhone, toWhatsAppUrl } from '../lib/phone'
+import { normalizePhone, toWhatsAppUrl, formatPhone } from '../lib/phone'
+import { forceUnlockScroll } from '../lib/scrollLock'
 import { useLangStore } from '../store/langStore'
 import { fetchVariantsByProduct, type ProductVariant } from '../services/variantService'
 import { BarcodeScannerInput, type ScannedItemPayload } from '../components/pos/BarcodeScannerInput'
@@ -379,7 +380,7 @@ export default function Pos(props: PosProps = {}) {
           category: scanned.category || 'Apparel',
           remedy: [],
           price: scanned.price,
-          offerPrice: scanned.offer_price || null,
+          offerPrice: scanned.variant_id ? null : (scanned.offer_price || null),
           stock: scanned.stock,
           stockQuantity: scanned.stock,
           hasVariants: false,
@@ -439,7 +440,7 @@ export default function Pos(props: PosProps = {}) {
         name_ta: prod.name_ta,
         variant_name: varnt?.variant_name,
         price: price,
-        offer_price: prod.offer_price ? Number(prod.offer_price) : undefined,
+        offer_price: record.variant_id ? undefined : (prod.offer_price ? Number(prod.offer_price) : undefined),
         stock: effectiveStock,
         barcode: clean,
         image_url: prod.image_url,
@@ -907,7 +908,8 @@ export default function Pos(props: PosProps = {}) {
       gstAmount: inv.gstAmount,
       total: inv.total,
     })
-    window.open(toWhatsAppUrl(inv.phone || customer.phone || '', message), '_blank', 'noopener,noreferrer')
+    forceUnlockScroll()
+    window.location.href = toWhatsAppUrl(inv.phone || customer.phone || '', message)
   }
 
   const persistInvoicePdf = async (inv: InvoiceSnap) => {
@@ -972,7 +974,7 @@ export default function Pos(props: PosProps = {}) {
     }))
 
     return (
-      <div className="mobile-page-shell print:bg-white print:min-h-0">
+      <div className="mobile-page-shell print:bg-white print:min-h-0 print:h-auto print:m-0 print:p-0 print:overflow-visible">
         {/* Screen UI */}
         <div className="max-w-2xl mx-auto px-4 py-6 print:hidden space-y-4">
           {/* Header */}
@@ -1012,7 +1014,7 @@ export default function Pos(props: PosProps = {}) {
               {invoice.phone && (
                 <div>
                   <span className="text-[10px] text-gray-400 font-bold uppercase block">Phone</span>
-                  <span className="font-semibold text-gray-700 block">{invoice.phone}</span>
+                  <span className="font-semibold text-gray-700 block">{formatPhone(invoice.phone)}</span>
                 </div>
               )}
             </div>
@@ -1074,7 +1076,7 @@ export default function Pos(props: PosProps = {}) {
         </div>
 
         {/* Print view — full A4 invoice */}
-        <div className="hidden print:block">
+        <div className="hidden print:block print:m-0 print:p-0 print:h-auto print:min-h-0 print:overflow-visible">
           <Invoice
             invoiceNo={invoice.invoiceNo}
             date={invoice.date}
@@ -1165,7 +1167,7 @@ export default function Pos(props: PosProps = {}) {
                   value={customer.name}
                   onChange={e => setCustomer({...customer, name: e.target.value})}
                   placeholder="Enter name"
-                  className="w-full min-w-0 max-w-full box-border h-10 sm:h-11 px-3 sm:px-4 bg-white border border-gray-200 rounded-xl focus:outline-none focus:border-[#D4AF37] text-[13px] font-bold text-[#111111] placeholder:text-gray-400 placeholder:font-medium"
+                  className="w-full min-w-0 max-w-full box-border h-10 px-3 bg-white border border-gray-200 rounded-xl focus:outline-none focus:border-[#D4AF37] text-xs font-semibold text-[#111111] placeholder:text-gray-400 placeholder:font-normal"
                 />
               </div>
               <div className="min-w-0">
@@ -1175,7 +1177,7 @@ export default function Pos(props: PosProps = {}) {
                   value={customer.phone}
                   onChange={e => setCustomer({...customer, phone: e.target.value})}
                   placeholder="Enter WhatsApp number"
-                  className="w-full min-w-0 max-w-full box-border h-10 sm:h-11 px-3 sm:px-4 bg-white border border-gray-200 rounded-xl focus:outline-none focus:border-[#D4AF37] text-[13px] font-bold text-[#111111] placeholder:text-gray-400 placeholder:font-medium"
+                  className="w-full min-w-0 max-w-full box-border h-10 px-3 bg-white border border-gray-200 rounded-xl focus:outline-none focus:border-[#D4AF37] text-xs font-semibold text-[#111111] placeholder:text-gray-400 placeholder:font-normal"
                 />
               </div>
               <div className="min-w-0">
@@ -1185,7 +1187,7 @@ export default function Pos(props: PosProps = {}) {
                   value={remarks}
                   onChange={e => setRemarks(e.target.value)}
                   placeholder="Optional remarks"
-                  className="w-full min-w-0 max-w-full box-border h-10 sm:h-11 px-3 sm:px-4 bg-white border border-gray-200 rounded-xl focus:outline-none focus:border-[#D4AF37] text-[13px] font-bold text-[#111111] placeholder:text-gray-400 placeholder:font-medium"
+                  className="w-full min-w-0 max-w-full box-border h-10 px-3 bg-white border border-gray-200 rounded-xl focus:outline-none focus:border-[#D4AF37] text-xs font-semibold text-[#111111] placeholder:text-gray-400 placeholder:font-normal"
                 />
               </div>
               <div className="min-w-0">
@@ -1195,7 +1197,7 @@ export default function Pos(props: PosProps = {}) {
                   value={referenceNumber}
                   onChange={e => setReferenceNumber(e.target.value)}
                   placeholder="Optional ref no."
-                  className="w-full min-w-0 max-w-full box-border h-10 sm:h-11 px-3 sm:px-4 bg-white border border-gray-200 rounded-xl focus:outline-none focus:border-[#D4AF37] text-[13px] font-bold text-[#111111] placeholder:text-gray-400 placeholder:font-medium"
+                  className="w-full min-w-0 max-w-full box-border h-10 px-3 bg-white border border-gray-200 rounded-xl focus:outline-none focus:border-[#D4AF37] text-xs font-semibold text-[#111111] placeholder:text-gray-400 placeholder:font-normal"
                 />
               </div>
               <div className="min-w-0 md:col-span-2">
@@ -1216,7 +1218,7 @@ export default function Pos(props: PosProps = {}) {
                   type="datetime-local"
                   value={billingDate}
                   onChange={e => setBillingDate(e.target.value)}
-                  className="block w-full min-w-0 max-w-full box-border h-10 sm:h-11 px-3 sm:px-4 bg-white border border-gray-200 rounded-xl focus:outline-none focus:border-[#D4AF37] text-[13px] font-bold text-[#111111]"
+                  className="block w-full min-w-0 max-w-full box-border h-10 px-3 bg-white border border-gray-200 rounded-xl focus:outline-none focus:border-[#D4AF37] text-xs font-semibold text-[#111111]"
                   style={{ maxWidth: '100%', boxSizing: 'border-box' }}
                 />
                 <p className="mt-1 text-[10px] text-gray-400 font-medium">Leave blank to use today's date &amp; time</p>
@@ -1237,7 +1239,8 @@ export default function Pos(props: PosProps = {}) {
 
               {/* Barcode Scanner Bar */}
               <div className="w-full">
-                <BarcodeScannerInput onItemScanned={handleScannedItem} />
+                {/* Inside Dashboard, its global scanner hook already handles hardware scans */}
+                <BarcodeScannerInput onItemScanned={handleScannedItem} listenForHardwareScanner={!embeddedMode} />
               </div>
 
               <div className="flex flex-wrap items-center gap-2 pt-1">
@@ -1303,7 +1306,7 @@ export default function Pos(props: PosProps = {}) {
                             value={item.name}
                             onChange={e => updateItem(item.id, 'name', e.target.value)}
                             placeholder="Enter item name..."
-                            className="w-full px-3 py-1.5 bg-[#FAFAFA] border border-gray-200 rounded-xl text-[14px] font-bold text-[#111111] focus:outline-none focus:border-[#D4AF37]"
+                            className="w-full px-3 py-1.5 bg-[#FAFAFA] border border-gray-200 rounded-xl text-xs sm:text-[13px] font-semibold text-[#111111] placeholder:text-gray-400 placeholder:font-normal focus:outline-none focus:border-[#D4AF37]"
                           />
                         ) : (
                           <div>
@@ -1388,12 +1391,12 @@ export default function Pos(props: PosProps = {}) {
                           type="text"
                           value={item.name}
                           onChange={e => updateItem(item.id, 'name', e.target.value)}
-                          placeholder="Item name"
-                          className="w-full px-3 py-2 bg-[#FAFAFA] border border-gray-200 rounded-lg text-[13px] font-bold text-[#111111] focus:outline-none focus:border-[#D4AF37]"
+                          placeholder="Enter item name..."
+                          className="w-full px-3 py-2 bg-[#FAFAFA] border border-gray-200 rounded-lg text-xs sm:text-[13px] font-semibold text-[#111111] placeholder:text-gray-400 placeholder:font-normal focus:outline-none focus:border-[#D4AF37]"
                         />
                       ) : (
-                        <div className="px-3 py-2 w-full truncate border border-transparent flex items-center gap-2">
-                          <span className="text-[13px] font-bold text-[#111111] truncate">{item.name} {item.variantName ? `- ${item.variantName}` : ''}</span>
+                        <div className="px-3 py-2 w-full border border-transparent flex items-center gap-2 min-w-0">
+                          <span className="text-[13px] font-bold text-[#111111] whitespace-normal [overflow-wrap:anywhere] [word-break:break-word]">{item.name} {item.variantName ? `- ${item.variantName}` : ''}</span>
                         </div>
                       )}
                       {item.source !== 'manual' && (
@@ -1478,7 +1481,7 @@ export default function Pos(props: PosProps = {}) {
                       value={customer.name}
                       onChange={e => setCustomer({...customer, name: e.target.value})}
                       placeholder="Enter name"
-                      className="w-full h-8 px-2 bg-white border border-gray-200 rounded-lg text-[12px] font-bold text-[#111111] focus:outline-none focus:border-[#D4AF37]"
+                      className="w-full h-8 px-2 bg-white border border-gray-200 rounded-lg text-[11px] font-semibold text-[#111111] placeholder:text-gray-400 placeholder:font-normal focus:outline-none focus:border-[#D4AF37]"
                     />
                   </div>
                   <div className="p-2">
@@ -1488,16 +1491,16 @@ export default function Pos(props: PosProps = {}) {
                       value={customer.phone}
                       onChange={e => setCustomer({...customer, phone: e.target.value})}
                       placeholder="Enter WhatsApp number"
-                      className={`w-full h-8 px-2 bg-white border rounded-lg text-[12px] font-bold text-[#111111] focus:outline-none ${customer.phone && !normalizePhone(customer.phone) ? 'border-red-400 bg-red-50' : 'border-gray-200 focus:border-[#D4AF37]'}`}
+                      className={`w-full h-8 px-1.5 sm:px-2 bg-white border rounded-lg text-[10px] sm:text-[11px] font-semibold text-[#111111] placeholder:text-gray-400 placeholder:font-normal focus:outline-none ${customer.phone && !normalizePhone(customer.phone) ? 'border-red-400 bg-red-50' : 'border-gray-200 focus:border-[#D4AF37]'}`}
                     />
                   </div>
                 </div>
 {items.length > 0 && (
                   <div className="px-3 py-2 bg-[#FAFAFA] space-y-1 border-b border-gray-200 max-h-[80px] overflow-y-auto">
                     {items.map(item => (
-                <div key={item.id} className="flex justify-between text-[#111111] text-[11px]">
-                        <span className="truncate pr-2">{item.qty}x {item.name}</span>
-                        <span>{formatCurrency(item.lineTotal)}</span>
+                <div key={item.id} className="flex justify-between text-[#111111] text-[11px] gap-2">
+                        <span className="pr-2 whitespace-normal [overflow-wrap:anywhere] [word-break:break-word] min-w-0">{item.qty}x {item.name}</span>
+                        <span className="shrink-0">{formatCurrency(item.lineTotal)}</span>
                       </div>
                     ))}
                   </div>
@@ -1521,7 +1524,7 @@ export default function Pos(props: PosProps = {}) {
                     placeholder="Enter code"
                     disabled={appliedCoupon !== null}
                     list="pos-coupons"
-                    className="w-full h-9 px-3 bg-white border border-gray-200 rounded-xl text-[12px] font-bold text-[#111111] focus:outline-none focus:border-[#D4AF37] uppercase disabled:bg-gray-100"
+                    className="w-full h-9 px-3 bg-white border border-gray-200 rounded-xl text-xs font-semibold text-[#111111] placeholder:text-gray-400 placeholder:font-normal focus:outline-none focus:border-[#D4AF37] uppercase disabled:bg-gray-100"
                   />
                   <datalist id="pos-coupons">
                     {availableCoupons.map(c => (
@@ -1677,7 +1680,7 @@ export default function Pos(props: PosProps = {}) {
                     value={cashReceived}
                     onChange={e => setCashReceived(e.target.value)}
                     placeholder="0.00"
-                    className="w-full h-9 px-3 bg-[#FAFAFA] border border-gray-200 rounded-xl text-[13px] font-black text-[#111111] focus:outline-none focus:border-[#D4AF37]"
+                    className="w-full h-9 px-3 bg-[#FAFAFA] border border-gray-200 rounded-xl text-xs font-semibold text-[#111111] placeholder:text-gray-400 placeholder:font-normal focus:outline-none focus:border-[#D4AF37]"
                   />
                   {cashReceivedNum > 0 && (
                     <div className="mt-2 flex justify-between items-center bg-[#F9FAFB] px-3 py-1.5 rounded-lg border border-gray-200">
@@ -1760,7 +1763,7 @@ export default function Pos(props: PosProps = {}) {
             <p className="mt-4 text-[11px] font-black uppercase tracking-[.16em] text-violet-600">Deposit order saved</p>
             <h3 className="mt-1 text-2xl font-black text-[#111111]">{depositCreated.deposit_id}</h3>
             <p className="mt-2 text-sm text-[#6B7280]">Deposit {formatCurrency(depositCreated.deposit_amount)} · Balance {formatCurrency(depositCreated.remaining_balance)}</p>
-            <div className="mt-5 grid grid-cols-2 gap-2"><button onClick={() => printAdvanceReceipt(depositCreated)} className="rounded-xl border border-violet-200 py-3 text-sm font-black text-violet-700"><Printer size={16} className="mr-1 inline"/>Print Receipt</button><button onClick={() => { const msg = buildAdvanceDepositWhatsAppMessage({ customerName: depositCreated.customer_name, depositId: depositCreated.deposit_id, productName: depositCreated.product_name, totalAmount: depositCreated.total_amount, depositAmount: depositCreated.deposit_amount, remainingBalance: depositCreated.remaining_balance, expectedDeliveryDate: depositCreated.expected_delivery_date }); window.open(toWhatsAppUrl(depositCreated.phone, msg), '_blank', 'noopener,noreferrer') }} className="rounded-xl bg-[#25D366] py-3 text-sm font-black text-white"><MessageCircle size={16} className="mr-1 inline -mt-0.5"/>WhatsApp</button></div>
+            <div className="mt-5 grid grid-cols-2 gap-2"><button onClick={() => printAdvanceReceipt(depositCreated)} className="rounded-xl border border-violet-200 py-3 text-sm font-black text-violet-700"><Printer size={16} className="mr-1 inline"/>Print Receipt</button><button onClick={() => { const msg = buildAdvanceDepositWhatsAppMessage({ customerName: depositCreated.customer_name, depositId: depositCreated.deposit_id, productName: depositCreated.product_name, totalAmount: depositCreated.total_amount, depositAmount: depositCreated.deposit_amount, remainingBalance: depositCreated.remaining_balance, expectedDeliveryDate: depositCreated.expected_delivery_date }); forceUnlockScroll(); window.location.href = toWhatsAppUrl(depositCreated.phone, msg) }} className="rounded-xl bg-[#25D366] py-3 text-sm font-black text-white"><MessageCircle size={16} className="mr-1 inline -mt-0.5"/>WhatsApp</button></div>
             <button onClick={() => { setDepositCreated(null); searchRef.current?.focus() }} className="mt-3 w-full rounded-xl bg-[#111111] py-3 text-sm font-black text-white">Start New Order</button>
           </div>
         </div>
@@ -1886,7 +1889,7 @@ export default function Pos(props: PosProps = {}) {
                 </div>
                 <div>
                   <h3 className="text-base font-bold text-gray-900">Edit Item Price</h3>
-                  <p className="text-xs text-gray-500 truncate max-w-[260px]">{priceEditModal.item.name}</p>
+                  <p className="text-xs text-gray-500 whitespace-normal [overflow-wrap:anywhere] [word-break:break-word]">{priceEditModal.item.name}</p>
                 </div>
               </div>
               <button

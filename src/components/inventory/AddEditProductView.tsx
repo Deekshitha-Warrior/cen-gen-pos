@@ -14,6 +14,7 @@ import { supabase } from '../../lib/supabase'
 import { useProductStore, type Product } from '../../store/store'
 import { fetchVariantsByProduct } from '../../services/variantService'
 import { inventoryService, type CategoryRecord } from '../../services/inventoryService'
+import { normalizeBarcode } from '../../lib/barcode'
 
 export const STANDARD_LETTER_SIZES = ['XS', 'S', 'M', 'L', 'XL', '2XL', '3XL', '4XL', '5XL', 'Free Size'] as const
 export const STANDARD_NUMERIC_SIZES = ['28', '30', '32', '34', '36', '38', '40', '42', '44', '46', '48'] as const
@@ -50,7 +51,7 @@ export const AddEditProductView: React.FC<{
   const [price, setPrice] = useState<string>('')
   const [purchasePrice, setPurchasePrice] = useState<string>('')
   const [stockQuantity, setStockQuantity] = useState<string>('0')
-  const [lowStockAlert, setLowStockAlert] = useState<string>('5')
+  const [lowStockAlert, setLowStockAlert] = useState<string>('')
   const [barcode, setBarcode] = useState<string>('')
   const [description, setDescription] = useState<string>('')
   const [hasVariants, setHasVariants] = useState<boolean>(false)
@@ -74,7 +75,7 @@ export const AddEditProductView: React.FC<{
     setPrice('')
     setPurchasePrice('')
     setStockQuantity('0')
-    setLowStockAlert('5')
+    setLowStockAlert('')
     setBarcode('')
     setDescription('')
     setHasVariants(false)
@@ -101,9 +102,9 @@ export const AddEditProductView: React.FC<{
     setCategoryId(matchedCatId)
 
     setPrice(String(p.price || ''))
-    setPurchasePrice(String(p.purchasePrice || ''))
+    setPurchasePrice(p.purchasePrice != null ? String(p.purchasePrice) : '')
     setStockQuantity(String(p.stockQuantity ?? p.stock ?? 0))
-    setLowStockAlert(p.lowStockAlert ? String(p.lowStockAlert) : '5')
+    setLowStockAlert(p.lowStockAlert != null && p.lowStockAlert > 0 ? String(p.lowStockAlert) : '')
     setBarcode(p.barcode || '')
     setDescription(p.description || '')
     setHasVariants(Boolean(p.hasVariants))
@@ -259,9 +260,10 @@ export const AddEditProductView: React.FC<{
       resetForm()
       onStockUpdated?.()
       setStatusMessage({ type: 'success', text: `Product "${prodName}" deleted successfully.` })
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to delete product:', err)
-      setStatusMessage({ type: 'error', text: err instanceof Error ? err.message : 'Failed to delete product' })
+      const msg = err?.message || (err instanceof Error ? err.message : 'Failed to delete product')
+      setStatusMessage({ type: 'error', text: msg })
     } finally {
       setLoading(false)
     }
@@ -280,7 +282,9 @@ export const AddEditProductView: React.FC<{
     const validVariants = variantRows.filter((v) => v.variantName.trim() !== '')
     const firstVariant = validVariants[0]
     const priceNum = hasVariants && firstVariant ? (Number(firstVariant.price) || 0) : (parseFloat(price) || 0)
-    const costNum = hasVariants && firstVariant ? (Number(firstVariant.costPrice) || 0) : (parseFloat(purchasePrice) || 0)
+    // Cost / purchase price is optional: blank is stored as NULL
+    const costInput = hasVariants && firstVariant ? Number(firstVariant.costPrice) : parseFloat(purchasePrice)
+    const costNum: number | null = Number.isFinite(costInput) && costInput >= 0 && (hasVariants ? costInput > 0 : purchasePrice.trim() !== '') ? costInput : null
 
     if (!hasVariants && priceNum <= 0) {
       setStatusMessage({ type: 'error', text: 'Price must be greater than 0' })
@@ -294,7 +298,8 @@ export const AddEditProductView: React.FC<{
 
     const selectedCat = categories.find((c) => Number(c.id) === Number(categoryId))
     const categoryName = selectedCat ? selectedCat.name_en : 'General'
-    const alertThreshold = Number(lowStockAlert) > 0 ? Number(lowStockAlert) : 5
+    // Low stock threshold is optional: blank is stored as NULL (alerts fall back to 5)
+    const alertThreshold: number | null = lowStockAlert.trim() !== '' && Number(lowStockAlert) > 0 ? Number(lowStockAlert) : null
 
     setLoading(true)
 
@@ -320,12 +325,12 @@ export const AddEditProductView: React.FC<{
               name: trimmedName,
               name_ta: nameTa.trim() || '',
               category: categoryName,
-              category_id: categoryId ? Number(categoryId) : 1,
+              category_id: categoryId ? Number(categoryId) : null,
               price: priceNum,
               offer_price: priceNum,
               purchase_price: costNum,
               low_stock_alert: alertThreshold,
-              barcode: barcode.trim() || null,
+              barcode: barcode.trim() ? normalizeBarcode(barcode) : null,
               description: description.trim() || '',
               has_variants: false,
               stock_quantity: inputStock,
@@ -353,12 +358,13 @@ export const AddEditProductView: React.FC<{
           if (barcode.trim()) {
             await supabase.from('barcode_registry').upsert(
               {
-                barcode: barcode.trim(),
+                barcode_value: normalizeBarcode(barcode),
+                entity_type: 'product',
                 product_id: selectedProductId,
                 variant_id: null,
                 is_active: true,
               },
-              { onConflict: 'barcode' }
+              { onConflict: 'barcode_value' }
             )
           }
 
@@ -387,7 +393,7 @@ export const AddEditProductView: React.FC<{
                   price: vPrice,
                   purchase_price: vCost,
                   stock: vStock,
-                  barcode: v.customBarcode?.trim() || null,
+                  barcode: v.customBarcode?.trim() ? normalizeBarcode(v.customBarcode) : null,
                   is_active: true,
                 })
                 .select()
@@ -426,7 +432,7 @@ export const AddEditProductView: React.FC<{
                   price: vPrice,
                   purchase_price: vCost,
                   stock: vStock,
-                  barcode: v.customBarcode?.trim() || null,
+                  barcode: v.customBarcode?.trim() ? normalizeBarcode(v.customBarcode) : null,
                 })
                 .eq('id', v.id)
 
@@ -454,7 +460,7 @@ export const AddEditProductView: React.FC<{
               name: trimmedName,
               name_ta: nameTa.trim() || '',
               category: categoryName,
-              category_id: categoryId ? Number(categoryId) : 1,
+              category_id: categoryId ? Number(categoryId) : null,
               price: priceNum,
               offer_price: priceNum,
               purchase_price: costNum,
@@ -483,12 +489,12 @@ export const AddEditProductView: React.FC<{
               name: trimmedName,
               name_ta: nameTa.trim() || '',
               category: categoryName,
-              category_id: categoryId ? Number(categoryId) : 1,
+              category_id: categoryId ? Number(categoryId) : null,
               price: priceNum,
               offer_price: priceNum,
               purchase_price: costNum,
               low_stock_alert: alertThreshold,
-              barcode: barcode.trim() || null,
+              barcode: barcode.trim() ? normalizeBarcode(barcode) : null,
               description: description.trim() || '',
               has_variants: false,
               stock_quantity: inputStock,
@@ -503,12 +509,13 @@ export const AddEditProductView: React.FC<{
           if (barcode.trim()) {
             await supabase.from('barcode_registry').upsert(
               {
-                barcode: barcode.trim(),
+                barcode_value: normalizeBarcode(barcode),
+                entity_type: 'product',
                 product_id: newProd.id,
                 variant_id: null,
                 is_active: true,
               },
-              { onConflict: 'barcode' }
+              { onConflict: 'barcode_value' }
             )
           }
 
@@ -547,7 +554,7 @@ export const AddEditProductView: React.FC<{
               name: trimmedName,
               name_ta: nameTa.trim() || '',
               category: categoryName,
-              category_id: categoryId ? Number(categoryId) : 1,
+              category_id: categoryId ? Number(categoryId) : null,
               price: priceNum,
               offer_price: priceNum,
               purchase_price: costNum,
@@ -579,7 +586,7 @@ export const AddEditProductView: React.FC<{
                 price: vPrice,
                 purchase_price: vCost,
                 stock: vStock,
-                barcode: v.customBarcode?.trim() || null,
+                barcode: v.customBarcode?.trim() ? normalizeBarcode(v.customBarcode) : null,
                 is_active: true,
               })
               .select('id')
@@ -588,7 +595,7 @@ export const AddEditProductView: React.FC<{
             if (createdVar && v.customBarcode?.trim()) {
               await supabase.from('barcode_registry').upsert(
                 {
-                  barcode: v.customBarcode.trim(),
+                  barcode: normalizeBarcode(v.customBarcode),
                   product_id: newProd.id,
                   variant_id: createdVar.id,
                   is_active: true,
@@ -623,8 +630,9 @@ export const AddEditProductView: React.FC<{
 
       await fetchProducts(true)
       onStockUpdated?.()
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'An error occurred while saving'
+    } catch (err: any) {
+      console.error('Save Product Error:', err)
+      const msg = err?.message || (err?.details ? `${err.message || ''} (${err.details})` : null) || (err instanceof Error ? err.message : 'An error occurred while saving')
       setStatusMessage({ type: 'error', text: msg })
     } finally {
       setLoading(false)
@@ -726,8 +734,8 @@ export const AddEditProductView: React.FC<{
                     }`}
                   >
                     <div className="flex-1 min-w-0 pr-1">
-                      <div className="flex items-center gap-1.5">
-                        <span className="font-bold text-xs text-gray-900 truncate" title={p.name}>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="font-bold text-xs text-gray-900 whitespace-normal [overflow-wrap:anywhere] [word-break:break-word]" title={p.name}>
                           {p.name}
                         </span>
                         {isSelected && (
@@ -736,7 +744,7 @@ export const AddEditProductView: React.FC<{
                           </span>
                         )}
                       </div>
-                      <div className="text-[10px] text-gray-500 font-medium truncate mt-0.5">
+                      <div className="text-[10px] text-gray-500 font-medium whitespace-normal [overflow-wrap:anywhere] [word-break:break-word] mt-0.5">
                         {p.category || 'General'} {p.hasVariants ? '• Multi-variant' : ''}
                       </div>
                     </div>
@@ -806,11 +814,6 @@ export const AddEditProductView: React.FC<{
                 <h3 className="text-sm font-bold text-black flex items-center gap-2 truncate">
                   <Package size={16} className="text-[#D4AF37] shrink-0" />
                   <span className="truncate">{selectedProductId ? 'Edit Product & Stock Details' : 'Add New Product to Catalog'}</span>
-                  {selectedProductId && (
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-100 text-amber-900 border border-amber-300 shrink-0">
-                      Editing
-                    </span>
-                  )}
                 </h3>
                 <p className="text-[11px] text-gray-500 font-semibold truncate hidden sm:block">
                   {selectedProductId
@@ -935,7 +938,7 @@ export const AddEditProductView: React.FC<{
 
               <div>
                 <label className="block text-[11px] font-bold text-gray-700 mb-1.5 h-4 flex items-center">
-                  Low Stock Alert Threshold
+                  Low Stock Alert Threshold <span className="text-gray-400 font-medium ml-1">(optional)</span>
                 </label>
                 <input
                   type="number"
@@ -969,7 +972,7 @@ export const AddEditProductView: React.FC<{
 
                 <div>
                   <label className="block text-[11px] font-bold text-gray-700 mb-1.5 h-4 flex items-center">
-                    Purchase / Cost Price (₹)
+                    Purchase / Cost Price (₹) <span className="text-gray-400 font-medium ml-1">(optional)</span>
                   </label>
                   <input
                     type="number"

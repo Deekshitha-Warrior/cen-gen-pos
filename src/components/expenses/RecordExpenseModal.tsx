@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { X, Calendar, Tag, AlertCircle, Edit2 } from 'lucide-react'
 import { expenseService, type ExpenseCategory, type ExpenseRecord } from '../../services/expenseService'
+import { useVisualViewportHeight } from '../../hooks/useVisualViewportHeight'
+import { lockScroll, unlockScroll } from '../../lib/scrollLock'
 
 interface RecordExpenseModalProps {
   isOpen: boolean
@@ -56,14 +58,17 @@ export const RecordExpenseModal: React.FC<RecordExpenseModalProps> = ({
   // Lock background scrolling when open
   useEffect(() => {
     if (isOpen) {
-      document.body.style.overflow = 'hidden'
+      lockScroll()
     } else {
-      document.body.style.overflow = ''
+      unlockScroll()
     }
     return () => {
-      document.body.style.overflow = ''
+      unlockScroll()
     }
   }, [isOpen])
+
+  const vvh = useVisualViewportHeight()
+  const modalHeightVar = vvh ? ({ '--modal-vvh': `${vvh}px` } as React.CSSProperties) : undefined
 
   if (!isOpen) return null
 
@@ -113,10 +118,18 @@ export const RecordExpenseModal: React.FC<RecordExpenseModalProps> = ({
     }
   }
 
+  const overlayStyle: React.CSSProperties = {
+    ...(modalHeightVar ?? {}),
+    height: vvh ? `${vvh}px` : '100dvh',
+  }
+
   return createPortal(
-    <div className="fixed inset-0 top-0 left-0 right-0 bottom-0 w-screen h-screen h-[100dvh] z-[9999] flex items-center justify-center bg-black/70 backdrop-blur-xs p-3 sm:p-4 overflow-hidden animate-in fade-in duration-150">
+    <div
+      className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 backdrop-blur-xs p-3 sm:p-4 overflow-hidden animate-in fade-in duration-150"
+      style={overlayStyle}
+    >
       <div className="absolute inset-0" onClick={onClose} />
-      <div className="relative z-10 bg-white rounded-2xl sm:rounded-3xl max-w-md w-full max-h-[92vh] border border-[#E8D399] shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-150">
+      <div className="relative z-10 bg-white rounded-2xl sm:rounded-3xl max-w-md w-full max-h-[92dvh] border border-[#E8D399] shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-150">
         {/* Header */}
         <div className="shrink-0 px-5 py-3.5 border-b border-gray-100 flex items-center justify-between bg-[#FBFAF6]">
           <div className="flex items-center gap-2">
@@ -139,7 +152,8 @@ export const RecordExpenseModal: React.FC<RecordExpenseModalProps> = ({
         </div>
 
         {/* Form Body */}
-        <form onSubmit={handleSubmit} className="overflow-y-auto min-h-0 flex-1 p-4 sm:p-6 space-y-4">
+        <form onSubmit={handleSubmit} className="flex flex-col flex-1 overflow-hidden min-h-0">
+          <div className="overflow-y-auto min-h-0 flex-1 p-4 sm:p-6 space-y-4">
           {errorMsg && (
             <div className="flex items-center gap-2 text-xs font-bold text-rose-800 bg-rose-50 border border-rose-200 p-3 rounded-xl">
               <AlertCircle size={15} className="text-rose-600 shrink-0" />
@@ -158,7 +172,7 @@ export const RecordExpenseModal: React.FC<RecordExpenseModalProps> = ({
                 required
                 value={expenseDate}
                 onChange={(e) => setExpenseDate(e.target.value)}
-                className="w-full h-11 px-3 pl-9 rounded-xl border border-gray-300 bg-[#FAFAFA] text-xs font-bold text-gray-900 outline-none focus:border-[#0A0A0A] focus:bg-white transition-all"
+                className="w-full h-10 px-3 pl-9 rounded-xl border border-gray-300 bg-[#FAFAFA] text-xs font-semibold text-gray-900 outline-none focus:border-[#0A0A0A] focus:bg-white transition-all"
               />
               <Calendar size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
             </div>
@@ -172,7 +186,7 @@ export const RecordExpenseModal: React.FC<RecordExpenseModalProps> = ({
             <select
               value={categoryId}
               onChange={(e) => setCategoryId(e.target.value)}
-              className="w-full h-11 px-3 rounded-xl border border-gray-300 bg-[#FAFAFA] text-xs font-bold text-gray-900 outline-none focus:border-[#0A0A0A] focus:bg-white cursor-pointer transition-all"
+              className="w-full h-10 px-3 rounded-xl border border-gray-300 bg-[#FAFAFA] text-xs font-semibold text-gray-900 outline-none focus:border-[#0A0A0A] focus:bg-white cursor-pointer transition-all"
             >
               {categories.map((cat) => (
                 <option key={cat.id} value={cat.id}>
@@ -199,7 +213,7 @@ export const RecordExpenseModal: React.FC<RecordExpenseModalProps> = ({
                 placeholder="0.00"
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
-                className="w-full h-11 pl-8 pr-3 rounded-xl border border-gray-300 bg-[#FAFAFA] text-sm font-bold text-gray-900 outline-none focus:border-[#0A0A0A] focus:bg-white transition-all [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                className="w-full h-10 pl-8 pr-3 rounded-xl border border-gray-300 bg-[#FAFAFA] text-xs sm:text-sm font-semibold text-gray-900 placeholder:text-gray-400 placeholder:font-normal outline-none focus:border-[#0A0A0A] focus:bg-white transition-all [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
               />
             </div>
           </div>
@@ -214,23 +228,28 @@ export const RecordExpenseModal: React.FC<RecordExpenseModalProps> = ({
               placeholder="Optional details (e.g. Shop electric bill, store supplies)..."
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              className="w-full p-3 rounded-xl border border-gray-300 bg-[#FAFAFA] text-xs font-medium text-gray-900 outline-none focus:border-[#0A0A0A] focus:bg-white resize-none transition-all"
+              className="w-full p-3 rounded-xl border border-gray-300 bg-[#FAFAFA] text-xs font-normal text-gray-900 placeholder:text-gray-400 placeholder:font-normal outline-none focus:border-[#0A0A0A] focus:bg-white resize-none transition-all"
             />
           </div>
 
-          {/* Modal Actions */}
-          <div className="flex items-center gap-3 pt-2">
+          </div>
+
+          {/* Sticky Modal Actions */}
+          <div
+            className="shrink-0 sticky bottom-0 z-20 px-5 py-3.5 bg-[#FBFAF6] border-t border-gray-100 flex items-center gap-3"
+            style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
+          >
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 h-11 rounded-xl border border-gray-300 text-xs font-bold text-gray-700 hover:bg-gray-100 transition-colors cursor-pointer"
+              className="flex-1 h-11 sm:h-10 rounded-xl border border-gray-300 text-xs font-bold text-gray-700 hover:bg-gray-100 transition-colors cursor-pointer min-h-[48px] sm:min-h-0 flex items-center justify-center"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={loading}
-              className="flex-[1.5] h-11 rounded-xl bg-[#0A0A0A] border border-[#D4AF37] text-[#D4AF37] text-xs font-bold hover:bg-[#1A1A1A] transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+              className="flex-[1.5] h-11 sm:h-10 rounded-xl bg-[#0A0A0A] border border-[#D4AF37] text-[#D4AF37] text-xs font-bold hover:bg-[#1A1A1A] transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 min-h-[48px] sm:min-h-0"
             >
               {loading
                 ? expenseToEdit

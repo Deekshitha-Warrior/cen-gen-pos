@@ -1,6 +1,18 @@
 import JsBarcode from 'jsbarcode'
 import { isSupabaseConfigured, supabase } from './supabase'
 
+export const normalizeBarcode = (code: string | null | undefined): string => {
+  if (code === null || code === undefined) return ''
+
+  const clean = String(code)
+    .trim()
+    .replace(/[\u0000-\u001F\u007F]/g, '')
+    .replace(/[^A-Z0-9_-]/gi, '')
+    .toUpperCase()
+
+  return clean
+}
+
 export interface LabelSizeConfig {
   id: string
   name: string
@@ -9,14 +21,26 @@ export interface LabelSizeConfig {
   heightMm: number
   horizontalGapMm: number
   isCustom?: boolean
+  /** Roll printers: full roll width including the bare liner at both edges. The label row is centred inside it. */
+  rollWidthMm?: number
 }
 
 export const DEFAULT_LABEL_SIZES: LabelSizeConfig[] = [
+  { id: '3_35x22', name: '35 × 22 mm (Compact Tag)', labelsPerRow: 1, widthMm: 35, heightMm: 22, horizontalGapMm: 0 },
   { id: '2_38x25', name: '38 × 25 mm (Tag / Jewelry)', labelsPerRow: 1, widthMm: 38, heightMm: 25, horizontalGapMm: 0 },
   { id: '1_50x25', name: '50 × 25 mm (Standard Compact)', labelsPerRow: 1, widthMm: 50, heightMm: 25, horizontalGapMm: 0 },
   { id: '2_50x25', name: '50 × 38 mm (Retail Standard)', labelsPerRow: 1, widthMm: 50, heightMm: 38, horizontalGapMm: 0 },
   { id: '1_60x40', name: '60 × 40 mm (Shipping / Product)', labelsPerRow: 1, widthMm: 60, heightMm: 40, horizontalGapMm: 0 },
   { id: '1_100x50', name: '100 × 50 mm (Large Carton / Box)', labelsPerRow: 1, widthMm: 100, heightMm: 50, horizontalGapMm: 0 },
+  { id: '4_35x22_2up', name: '35 × 22 mm × 2-Up (Roll, side-by-side)', labelsPerRow: 2, widthMm: 35, heightMm: 22, horizontalGapMm: 2 },
+  { id: '4_50x25_2up', name: '50 × 25 mm × 2-Up (Roll, side-by-side)', labelsPerRow: 2, widthMm: 50, heightMm: 25, horizontalGapMm: 2 },
+  // 3-up roll ("Clad 3 up" stock): 110 mm roll = 1.3 mm liner + 35 + 1.2 gap + 35 + 1.2 gap + 35 + 1.3 mm liner
+  { id: '4_35x22_3up', name: '35 × 22 mm × 3-Up (Roll, side-by-side)', labelsPerRow: 3, widthMm: 35, heightMm: 22, horizontalGapMm: 1.2, rollWidthMm: 110 },
+  // A4 sheet presets — matches standard 4-column Avery/generic Indian label sheets
+  { id: 'a4_4up_48x25', name: 'A4 Sheet — 4 columns × 48 × 25 mm', labelsPerRow: 4, widthMm: 48, heightMm: 25, horizontalGapMm: 2 },
+  { id: 'a4_4up_48x30', name: 'A4 Sheet — 4 columns × 48 × 30 mm', labelsPerRow: 4, widthMm: 48, heightMm: 30, horizontalGapMm: 2 },
+  { id: 'a4_3up_63x38', name: 'A4 Sheet — 3 columns × 63 × 38 mm', labelsPerRow: 3, widthMm: 63, heightMm: 38, horizontalGapMm: 3 },
+  { id: 'a4_2up_99x34', name: 'A4 Sheet — 2 columns × 99 × 34 mm (Address label)', labelsPerRow: 2, widthMm: 99, heightMm: 34, horizontalGapMm: 3 },
 ]
 
 export interface BarcodeSettings {
@@ -26,15 +50,24 @@ export interface BarcodeSettings {
   showCompanyName: boolean
   showItemName: boolean
   showDiscount: boolean
+  /** Roll printers: blank gap between two label rows on the roll (mm). 0 when the printer driver auto-feeds to the gap sensor. */
+  rowGapMm: number
+  /** Fine-tune: shift printed content right (+) / left (-) in mm */
+  offsetXMm: number
+  /** Fine-tune: shift printed content down (+) / up (-) in mm */
+  offsetYMm: number
 }
 
 export const DEFAULT_BARCODE_SETTINGS: BarcodeSettings = {
   printerType: 'label',
-  selectedSizeId: '2_38x25',
+  selectedSizeId: '4_35x22_3up',
   showSalePrice: true,
   showCompanyName: true,
   showItemName: true,
   showDiscount: false,
+  rowGapMm: 0,
+  offsetXMm: 0,
+  offsetYMm: 0,
 }
 
 const SETTINGS_KEY = 'clad_barcode_settings'
@@ -42,15 +75,27 @@ const LEGACY_SETTINGS_KEY = 'chaji_barcode_settings'
 const CUSTOM_SIZES_KEY = 'clad_custom_label_sizes'
 const LEGACY_CUSTOM_SIZES_KEY = 'chaji_custom_label_sizes'
 
+// One-time switch of existing installs to the 3-up roll; after this, whatever is chosen in settings sticks.
+const DEFAULT_3UP_APPLIED_KEY = 'clad_barcode_default_3up_applied'
+
 export function getStoredBarcodeSettings(): BarcodeSettings {
   try {
     const raw = localStorage.getItem(SETTINGS_KEY) || localStorage.getItem(LEGACY_SETTINGS_KEY)
-    if (raw) return { ...DEFAULT_BARCODE_SETTINGS, ...JSON.parse(raw) }
+    if (raw) {
+      const merged: BarcodeSettings = { ...DEFAULT_BARCODE_SETTINGS, ...JSON.parse(raw) }
+      if (!localStorage.getItem(DEFAULT_3UP_APPLIED_KEY)) {
+        merged.selectedSizeId = DEFAULT_BARCODE_SETTINGS.selectedSizeId
+        localStorage.setItem(SETTINGS_KEY, JSON.stringify(merged))
+        localStorage.setItem(DEFAULT_3UP_APPLIED_KEY, '1')
+      }
+      return merged
+    }
   } catch (e) {
     console.error('Failed to parse barcode settings:', e)
   }
   return DEFAULT_BARCODE_SETTINGS
 }
+
 
 export function saveStoredBarcodeSettings(settings: BarcodeSettings): void {
   try {
@@ -233,6 +278,10 @@ export interface BarcodeRenderOptions {
   font?: string
   textMargin?: number
   margin?: number
+  marginLeft?: number
+  marginRight?: number
+  /** Extra space under the human-readable text so it is not clipped */
+  marginBottom?: number
   lineColor?: string
   background?: string
 }
@@ -257,6 +306,9 @@ export function renderBarcodeSvg(
       font: options?.font ?? 'monospace',
       textMargin: options?.textMargin ?? 1,
       margin: options?.margin ?? 4,
+      ...(options?.marginLeft !== undefined ? { marginLeft: options.marginLeft } : {}),
+      ...(options?.marginRight !== undefined ? { marginRight: options.marginRight } : {}),
+      ...(options?.marginBottom !== undefined ? { marginBottom: options.marginBottom } : {}),
       lineColor: options?.lineColor ?? '#000000',
       background: options?.background ?? '#ffffff',
     })
@@ -284,6 +336,89 @@ export function generateBarcodeSvgString(
   }
 }
 
+/** One dot of a 203 dpi thermal printer, in mm (the common resolution for roll label printers). */
+const PRINTER_DOT_MM = 25.4 / 203
+
+/**
+ * Dot widths for Code 128 elements (bars and gaps are 1-4 modules wide), tried
+ * from widest to narrowest. "2,4,6,8" is the ideal 2 dots per module. "2,4,5,7"
+ * keeps narrow elements at 2 dots and trims the wide ones slightly, so a
+ * CLAD + 7 digit code fits a 35 mm label and still scans reliably.
+ */
+const THERMAL_DOT_MAPS: number[][] = [
+  [3, 6, 9, 12],
+  [2, 4, 6, 8],
+  [2, 4, 5, 7],
+  [2, 3, 5, 7],
+  [2, 3, 4, 5],
+  [1, 2, 3, 4],
+]
+
+/**
+ * Barcode bars for roll (thermal) labels. Every bar and gap is drawn as a whole
+ * number of printer dots, so the printer never has to round bars to uneven
+ * widths (the main reason thermal barcodes fail to scan). Returns an SVG that
+ * stretches to its container's height. No text: the number is printed as HTML.
+ */
+export function generateThermalBarcodeSvg(value: string, availableWidthMm: number): string {
+  if (typeof document === 'undefined' || !value) return ''
+  try {
+    const src = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+    renderBarcodeSvg(src, value, { width: 1, height: 100, displayValue: false, margin: 0 })
+    const modules = Number((src.getAttribute('viewBox') || '').split(' ')[2]) || 0
+    // Bars in module units, from the barcode group (skips the white background rect)
+    const bars = Array.from(src.querySelectorAll('g rect')).map((r) => ({
+      x: Math.round(Number(r.getAttribute('x'))),
+      w: Math.round(Number(r.getAttribute('width'))),
+    }))
+    if (!modules || bars.length === 0) return ''
+
+    // Elements alternate bar / gap; each is 1-4 modules wide in Code 128
+    const elements: { bar: boolean; modules: number }[] = []
+    let end = 0
+    for (const b of bars) {
+      if (b.x > end) elements.push({ bar: false, modules: b.x - end })
+      elements.push({ bar: true, modules: b.w })
+      end = b.x + b.w
+    }
+    const widthDots = (map: number[]) =>
+      elements.reduce((sum, e) => sum + (map[e.modules - 1] ?? e.modules * map[0]), 0)
+    const availableDots = Math.floor(availableWidthMm / PRINTER_DOT_MM)
+    const map = THERMAL_DOT_MAPS.find((candidate) => {
+      const quietZoneDots = candidate[0] * 10
+      return widthDots(candidate) + quietZoneDots * 2 <= availableDots
+    })
+    if (!map) return ''
+
+    const quietZoneDots = map[0] * 10
+    let rects = ''
+    let x = quietZoneDots
+    for (const e of elements) {
+      const width = map[e.modules - 1] ?? e.modules * map[0]
+      if (e.bar) rects += `<rect x="${x}" y="0" width="${width}" height="100"/>`
+      x += width
+    }
+    const totalDots = x + quietZoneDots
+    const widthMm = (totalDots * PRINTER_DOT_MM).toFixed(3)
+    return `<svg class="bc-bars" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${totalDots} 100" width="${widthMm}mm" style="width:${widthMm}mm" preserveAspectRatio="none" shape-rendering="crispEdges"><rect x="0" y="0" width="${totalDots}" height="100" fill="#fff"/><g fill="#000">${rects}</g></svg>`
+  } catch (err) {
+    console.error('[generateThermalBarcodeSvg] Failed to generate barcode SVG:', err)
+    return ''
+  }
+}
+export function getBarcodeModuleWidth(value: string, availableWidthMm: number, options?: BarcodeRenderOptions): number | null {
+  if (!value.trim() || !Number.isFinite(availableWidthMm) || availableWidthMm <= 0) return null
+
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+  renderBarcodeSvg(svg, value, { ...options, width: 1 })
+
+  const naturalWidth = Number.parseFloat(svg.getAttribute('width') || '')
+  if (!Number.isFinite(naturalWidth) || naturalWidth <= 0) return null
+
+  const moduleWidth = (availableWidthMm * 96 / 25.4) / naturalWidth
+  return moduleWidth >= 0.95 ? moduleWidth : null
+}
+
 /**
  * Format barcode for UI display.
  */
@@ -296,5 +431,5 @@ export function formatBarcodeDisplay(value?: string | null): string {
  * Validate barcode format (alphanumeric, 4 to 32 chars).
  */
 export function isValidBarcodeValue(value: string): boolean {
-  return /^[A-Z0-9_-]{4,32}$/i.test(value.trim())
+  return /^[A-Z0-9_-]{4,32}$/i.test(String(value ?? '').trim())
 }

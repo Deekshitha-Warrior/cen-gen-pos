@@ -3,14 +3,18 @@ import { createPortal } from 'react-dom'
 import { X, Printer, Copy, Check } from 'lucide-react'
 import { BarcodeLabel } from './BarcodeLabel'
 import { BRAND_EN } from '../../lib/brand'
+import { useVisualViewportHeight } from '../../hooks/useVisualViewportHeight'
 import {
   getAllLabelSizes,
   generateBarcodeSvgString,
+  generateThermalBarcodeSvg,
+  getBarcodeModuleWidth,
   getStoredBarcodeSettings,
   saveStoredBarcodeSettings,
   subscribeCustomSizes,
   fetchRemoteCustomSizes,
 } from '../../lib/barcode'
+import { lockScroll, unlockScroll } from '../../lib/scrollLock'
 
 export interface BarcodePrintModalProps {
   isOpen: boolean
@@ -24,17 +28,25 @@ export interface BarcodePrintModalProps {
 }
 
 type LabelSizePreset = {
+  id: string
   name: string
   widthMm: number
   heightMm: number
+  labelsPerRow: number
+  horizontalGapMm: number
+  rollWidthMm?: number
 }
 
 const getAvailablePresets = (): LabelSizePreset[] => {
   const sizes = getAllLabelSizes()
   return sizes.map((s) => ({
+    id: s.id,
     name: `${s.name} (${s.widthMm}mm × ${s.heightMm}mm)`,
     widthMm: s.widthMm,
     heightMm: s.heightMm,
+    labelsPerRow: Math.max(1, s.labelsPerRow || 1),
+    horizontalGapMm: s.horizontalGapMm || 0,
+    rollWidthMm: s.rollWidthMm,
   }))
 }
 
@@ -50,7 +62,10 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
 }) => {
   const [presets, setPresets] = useState<LabelSizePreset[]>(getAvailablePresets)
   const [quantity, setQuantity] = useState<string>(String(defaultQuantity || 1))
-  const [selectedPreset, setSelectedPreset] = useState<LabelSizePreset>(() => presets[0] || { name: 'Thermal Standard', widthMm: 50, heightMm: 25 })
+  const [selectedPreset, setSelectedPreset] = useState<LabelSizePreset>(() => {
+    const savedId = getStoredBarcodeSettings().selectedSizeId
+    return presets.find((x) => x.id === savedId) || presets[0] || { id: 'thermal_std', name: 'Thermal Standard', widthMm: 50, heightMm: 25, labelsPerRow: 1, horizontalGapMm: 0 }
+  })
   const [copied, setCopied] = useState(false)
   const [printerType, setPrinterType] = useState<'label' | 'regular'>(() => {
     return getStoredBarcodeSettings().printerType || 'label'
@@ -68,6 +83,14 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
     return unsubscribe
   }, [isOpen])
 
+  // Label size always follows Barcode Settings (re-read whenever the modal opens or sizes sync)
+  useEffect(() => {
+    if (!isOpen) return
+    const savedId = getStoredBarcodeSettings().selectedSizeId
+    const match = presets.find((x) => x.id === savedId)
+    if (match) setSelectedPreset(match)
+  }, [isOpen, presets])
+
   const handlePrinterTypeChange = (type: 'label' | 'regular') => {
     setPrinterType(type)
     const current = getStoredBarcodeSettings()
@@ -77,18 +100,20 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
   // Close on Escape key & lock body scrolling when open
   useEffect(() => {
     if (!isOpen) return
-    const originalOverflow = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
+    lockScroll()
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose()
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => {
-      document.body.style.overflow = originalOverflow
+      unlockScroll()
       window.removeEventListener('keydown', handleKeyDown)
     }
   }, [isOpen, onClose])
+
+  const vvh = useVisualViewportHeight()
+  const modalHeightVar = vvh ? ({ '--modal-vvh': `${vvh}px` } as React.CSSProperties) : undefined
 
   if (!isOpen) return null
 
@@ -99,15 +124,22 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
   }
 
   const handlePrint = () => {
+    // Detect in-app browsers that block iframe printing (Instagram, Facebook, etc.)
+    const ua = navigator.userAgent
+    const isInAppBrowser = /FBAN|FBAV|Instagram|Twitter|Line\/|MicroMessenger/.test(ua)
+
+    if (isInAppBrowser) {
+      alert(
+        'Printing is not available in this in-app browser.\nPlease open this page in Chrome or Safari to print barcode labels.'
+      )
+      return
+    }
+
     try {
       const iframe = document.createElement('iframe')
       iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden;'
       iframe.setAttribute('aria-hidden', 'true')
       iframe.setAttribute('tabindex', '-1')
-      iframe.setAttribute('data-gramm', 'false')
-      iframe.setAttribute('data-gramm_editor', 'false')
-      iframe.setAttribute('data-enable-grammarly', 'false')
-      iframe.setAttribute('spellcheck', 'false')
       document.body.appendChild(iframe)
 
       const doc = iframe.contentWindow?.document
@@ -121,224 +153,239 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
       const isSmall = selectedPreset.heightMm <= 25
       const isLarge = selectedPreset.heightMm >= 40
 
-      // Proportional barcode sizing preventing detail overlaps
-      // Barcode bars take ~32% of height, leaving balanced space for text, header, and footer
       const barcodeHeightPx = Math.max(16, Math.round(selectedPreset.heightMm * 0.32 * 3.7795))
-      const printableWidthPx = Math.max(30, (selectedPreset.widthMm - 4) * 3.7795)
-      const barcodeBarWidth = Math.max(0.80, Math.min(1.70, Math.round((printableWidthPx / 120) * 100) / 100))
       const barcodeFontSize = Math.max(6, Math.min(9.5, Math.round(selectedPreset.heightMm * 0.20 * 10) / 10))
-
-      // Direct SVG generation without CDN script dependencies
-      const svgMarkup = generateBarcodeSvgString(barcodeValue, {
-        width: barcodeBarWidth,
+      const barcodeAvailableWidthMm = (selectedPreset.widthMm - (isSmall ? 4 : 3.2)) * 0.97
+      const barcodeBarWidth = isThermal ? null : getBarcodeModuleWidth(barcodeValue, barcodeAvailableWidthMm, {
         height: barcodeHeightPx,
         fontSize: barcodeFontSize,
         font: 'Arial, sans-serif',
         margin: 0,
+        marginLeft: 10,
+        marginRight: 10,
         textMargin: 1.5,
         displayValue: true,
       })
+      if (!isThermal && barcodeBarWidth === null) {
+        iframe.remove()
+        alert('This barcode is too dense for the selected sticker size. Choose a wider label or use a shorter barcode.')
+        return
+      }
+
+      const svgMarkup = isThermal ? '' : generateBarcodeSvgString(barcodeValue, {
+        width: barcodeBarWidth ?? undefined,
+        height: barcodeHeightPx,
+        fontSize: barcodeFontSize,
+        font: 'Arial, sans-serif',
+        margin: 0,
+        marginLeft: 10,
+        marginRight: 10,
+        marginBottom: 2,
+        textMargin: 1.5,
+        displayValue: true,
+      })
+      const thermalSvgMarkup = isThermal
+        ? generateThermalBarcodeSvg(barcodeValue, selectedPreset.widthMm - 3.4)
+        : ''
+      if (isThermal && !thermalSvgMarkup) {
+        iframe.remove()
+        alert('This barcode is too long for the selected sticker size. Choose a wider label or use a shorter barcode.')
+        return
+      }
 
       const headerFontSize = isSmall ? '7pt' : isLarge ? '10.5pt' : '8.5pt'
-      const titleFontSize = isSmall ? '6pt' : isLarge ? '9pt' : '7.5pt'
       const tagFontSize = isSmall ? '5.5pt' : isLarge ? '8.5pt' : '7pt'
       const priceFontSize = isSmall ? '8pt' : isLarge ? '12pt' : '9.5pt'
-      const stickerPadding = isSmall ? '0.6mm 1.2mm' : '1.0mm 1.6mm'
+      const stickerPadding = isThermal
+        // Roll printers can't print the outer ~1.3 mm of the roll, so keep content clear of the label edges
+        ? (isSmall ? '2.4mm 2mm' : '2.4mm 2.4mm')
+        : (isSmall ? '0.8mm 2mm' : '1.0mm 1.6mm')
 
       const parsedQty = parseInt(quantity.trim(), 10)
       const validQuantity = !isNaN(parsedQty) && parsedQty > 0 ? parsedQty : 1
+      const mrpMarkup = mrp && mrp > price ? `<span class="mrp">₹${mrp}</span>` : ''
+
       const singleStickerHtml = `
         <div class="sticker">
           <div class="header">
             <div class="brand">${BRAND_EN}</div>
-            <div class="prod-title">${fullTitle}</div>
           </div>
-          <div class="barcode-box">
-            ${svgMarkup}
-          </div>
+          ${isThermal
+            ? `<div class="barcode-box thermal">${thermalSvgMarkup}<div class="bc-text">${barcodeValue}</div></div>`
+            : `<div class="barcode-box">${svgMarkup}</div>`}
           <div class="footer">
-            <span>${mrp && mrp > price ? `<span class="mrp">MRP ₹${mrp}</span>` : '<span class="retail-tag">CLAD RETAIL</span>'}</span>
-            <span class="price">₹${price}</span>
+            <span class="product-name">${fullTitle}</span>
+            <span class="price-group">${mrpMarkup}<span class="price">\u20b9${price}</span></span>
           </div>
-        </div>
-      `
-      const allStickersHtml = Array.from({ length: Math.max(1, validQuantity) })
-        .map(() => singleStickerHtml)
-        .join('')
+        </div>`
 
-      const bodyContent = isThermal
-        ? allStickersHtml
-        : `<div class="a4-container">${allStickersHtml}</div>`
+      const labelsPerRow = Math.max(1, selectedPreset.labelsPerRow || 1)
+      const gapMm = selectedPreset.horizontalGapMm || 0
 
-      const html = `
-        <!DOCTYPE html>
-        <html>
-          <head>
-            <title>Print Barcode - ${barcodeValue}</title>
-            <style>
-              @page {
-                ${
-                  isThermal
-                    ? `size: ${selectedPreset.widthMm}mm ${selectedPreset.heightMm}mm; margin: 0mm !important; marks: none !important;`
-                    : `size: A4 portrait; margin: 10mm !important;`
-                }
-              }
-              * {
-                box-sizing: border-box;
-                margin: 0;
-                padding: 0;
-              }
-              html, body {
-                margin: 0 !important;
-                padding: 0 !important;
-                background: #fff !important;
-                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-                -webkit-print-color-adjust: exact;
-                print-color-adjust: exact;
-              }
-              .a4-container {
-                display: flex;
-                flex-wrap: wrap;
-                align-content: flex-start;
-                gap: 3mm 4mm;
-              }
-              .sticker {
-                width: ${selectedPreset.widthMm}mm;
-                height: ${selectedPreset.heightMm}mm;
-                max-width: ${selectedPreset.widthMm}mm;
-                max-height: ${selectedPreset.heightMm}mm;
-                padding: ${stickerPadding};
-                display: flex;
-                flex-direction: column;
-                justify-content: space-between;
-                align-items: center;
-                text-align: center;
-                overflow: hidden;
-                box-sizing: border-box;
-                break-inside: avoid !important;
-                page-break-inside: avoid !important;
-                background: #fff;
-                ${!isThermal ? 'border: 0.2mm dashed #bbb;' : ''}
-              }
-              .sticker + .sticker {
-                ${isThermal ? 'break-before: page !important; page-break-before: always !important;' : ''}
-              }
-              .header {
-                width: 100%;
-                display: flex;
-                flex-direction: column;
-                align-items: center;
-                justify-content: flex-start;
-                line-height: 1.1;
-                flex-shrink: 0;
-              }
-              .brand {
-                font-size: ${headerFontSize};
-                font-weight: 900;
-                letter-spacing: 0.3px;
-                text-transform: uppercase;
-                color: #000;
-                line-height: 1.1;
-              }
-              .prod-title {
-                font-size: ${titleFontSize};
-                font-weight: 700;
-                white-space: nowrap;
-                overflow: hidden;
-                text-overflow: ellipsis;
-                max-width: 98%;
-                margin-top: 0.3mm;
-                color: #111;
-                line-height: 1.1;
-              }
-              .barcode-box {
-                width: 100%;
-                flex: 1;
-                min-height: 0;
-                display: flex;
-                justify-content: center;
-                align-items: center;
-                margin: 0.4mm 0;
-                overflow: hidden;
-              }
-              .barcode-box svg {
-                display: block;
-                margin: 0 auto;
-                max-width: 98%;
-                max-height: 100%;
-                width: auto;
-                height: auto;
-              }
-              .footer {
-                width: 100%;
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-                border-top: 0.6pt solid #000;
-                padding-top: 0.5mm;
-                line-height: 1;
-                flex-shrink: 0;
-              }
-              .retail-tag {
-                font-size: ${tagFontSize};
-                font-weight: 800;
-                color: #444;
-              }
-              .mrp {
-                text-decoration: line-through;
-                color: #555;
-                font-size: ${tagFontSize};
-                font-weight: 600;
-              }
-              .price {
-                font-size: ${priceFontSize};
-                font-weight: 900;
-                color: #000;
-              }
-            </style>
-          </head>
-          <body data-gramm="false">
-            ${bodyContent}
-          </body>
-        </html>
-      `
+      // Roll calibration (per computer/printer)
+      const cal = getStoredBarcodeSettings()
+      const rowGapMm = Math.max(0, Number(cal.rowGapMm) || 0)
+      const offsetXMm = Number(cal.offsetXMm) || 0
+      const offsetYMm = Number(cal.offsetYMm) || 0
+      
+      // Calculate layout metrics
+      const marginMm = isThermal ? 0 : 8
+      const rowWidthMm = selectedPreset.widthMm * labelsPerRow + gapMm * (labelsPerRow - 1)
+      // Page = full roll width; the label row is centred so the bare liner edges stay blank
+      const pageWidthMm = Math.max(rowWidthMm, selectedPreset.rollWidthMm || 0)
+      const sideMarginMm = (pageWidthMm - rowWidthMm) / 2
+      const colWidthMm = isThermal ? selectedPreset.widthMm : Math.floor(((210 - marginMm * 2) - gapMm * (labelsPerRow - 1)) / labelsPerRow)
+
+      const pageHeightMm = selectedPreset.heightMm + (isThermal ? rowGapMm : 0)
+      const allStickersHtml = Array.from({ length: validQuantity }, () => singleStickerHtml).join('')
+
+      // Thermal roll: each .label-row is one print page holding exactly `labelsPerRow`
+      // labels (the last row is padded with blank labels so the columns never shift).
+      const blankLabelHtml = '<div class="sticker blank"></div>'
+      let thermalRowsHtml = ''
+      for (let i = 0; i < validQuantity; i += labelsPerRow) {
+        const count = Math.min(labelsPerRow, validQuantity - i)
+        thermalRowsHtml += `<div class="label-row">${singleStickerHtml.repeat(count)}${blankLabelHtml.repeat(labelsPerRow - count)}</div>`
+      }
+      // Equal space above and below, so a printer that places the print 1-2 mm early or late
+      // (in either print orientation) never cuts the top or bottom line. Offset Y (Settings)
+      // moves the whole content down (+) or up (-) inside the label; the barcode bars absorb it.
+      const thermalTopPadMm = Math.max(0.3, Math.min(5, 2.4 + offsetYMm))
+      const thermalBottomPadMm = Math.max(0.3, Math.min(5, 2.4 - offsetYMm))
+
+      const html = `<!DOCTYPE html>
+<html>
+  <head>
+    <title>Print Barcode - ${barcodeValue}</title>
+    <style>
+      ${isThermal
+        ? `@media print {
+        @page { size: ${pageWidthMm}mm ${pageHeightMm}mm; margin: 0; }
+      }`
+        : `@page { size: A4 portrait; margin: ${marginMm}mm !important; }`
+      }
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      html, body { 
+        margin: 0 !important; 
+        padding: 0 !important; 
+        background: #fff !important;
+        font-family: Arial, Helvetica, sans-serif; 
+        -webkit-print-color-adjust: exact; 
+        print-color-adjust: exact; 
+        ${isThermal ? `width: ${pageWidthMm}mm;` : ''}
+      }
+      .grid { 
+        display: grid; 
+        grid-template-columns: repeat(${labelsPerRow}, ${colWidthMm}mm);
+        grid-auto-rows: ${selectedPreset.heightMm}mm; 
+        column-gap: ${gapMm}mm; 
+        row-gap: ${isThermal ? 0 : gapMm}mm; 
+        width: fit-content;
+      }
+      ${isThermal ? `
+      .label-row {
+        width: ${pageWidthMm}mm;
+        padding: 0 ${sideMarginMm}mm;
+        height: ${pageHeightMm}mm;
+        display: grid;
+        grid-template-columns: repeat(${labelsPerRow}, 1fr);
+        grid-template-rows: ${selectedPreset.heightMm}mm;
+        column-gap: ${gapMm}mm;
+        break-after: page;
+        page-break-after: always;
+        overflow: hidden;
+        ${offsetXMm !== 0 ? `position: relative; left: ${offsetXMm}mm;` : ''}
+      }
+      .label-row:last-child { break-after: auto; page-break-after: auto; }
+      .label-row .sticker { width: auto; min-width: 0; height: ${selectedPreset.heightMm}mm; overflow: hidden; padding-top: ${thermalTopPadMm}mm; padding-bottom: ${thermalBottomPadMm}mm; }
+      ` : ''}
+      .grid .sticker:nth-child(${labelsPerRow}n + 1) > * { position: relative; left: 1.5mm; }
+      .grid .sticker:nth-child(${labelsPerRow}n + 1) .barcode-box { overflow: visible; }
+      .sticker { 
+        width: ${colWidthMm}mm; 
+        height: ${selectedPreset.heightMm}mm;
+        padding: ${stickerPadding};
+        display: flex; 
+        flex-direction: column; 
+        justify-content: space-between;
+        align-items: center; 
+        text-align: center;
+        overflow: hidden;
+        background: #fff;
+        ${isThermal ? '' : 'border: 0.2mm dashed #bbb;'}
+        break-inside: avoid;
+        page-break-inside: avoid;
+      }
+      .brand { font-size: ${headerFontSize}; font-weight: 900; letter-spacing: 0.3px; text-transform: uppercase; color: #000; }
+      .barcode-box { width: 100%; flex: 1; min-height: 0; display: flex; justify-content: center;
+        align-items: center; margin: 0.4mm 0; overflow: hidden; }
+      .barcode-box svg { display: block; margin: 0 auto; max-width: 98%; max-height: 100%; width: auto; height: auto; }
+      .barcode-box.thermal { flex-direction: column; justify-content: center; width: calc(100% + 1.2mm); margin-left: -0.6mm; margin-right: -0.6mm; }
+      .barcode-box svg.bc-bars { flex: 1 1 0; min-height: 0; height: auto; max-width: none; max-height: none; }
+      .bc-text { font-size: 5.5pt; line-height: 1; letter-spacing: 0.2px; margin-top: 0.3mm; color: #000; font-weight: 700; flex-shrink: 0; }
+      .footer { width: 100%; display: flex; justify-content: space-between; align-items: center;
+        gap: 1mm; border-top: 0.6pt solid #000; padding-top: 0.5mm; line-height: 1; flex-shrink: 0; font-size: ${tagFontSize}; }
+      .product-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; font-size: ${tagFontSize}; }
+      .price-group { display: flex; align-items: baseline; gap: 0.7mm; flex-shrink: 0; }
+      .retail-tag { font-size: ${tagFontSize}; font-weight: 800; color: #000; }
+      .mrp { text-decoration: line-through; color: #000; font-size: ${tagFontSize}; font-weight: 600; }
+      .price { font-size: ${priceFontSize}; font-weight: 900; color: #000; }
+      .header *, .product-name, .bc-text, .footer *, .price, .mrp { font-weight: 900 !important; -webkit-text-stroke: 0.25pt #000; color: #000 !important; }
+    </style>
+  </head>
+  <body>
+    ${isThermal ? thermalRowsHtml : `<div class="grid">${allStickersHtml}</div>`}
+  </body>
+</html>`
 
       doc.open()
       doc.write(html)
       doc.close()
 
-      const cleanup = () => {
-        try {
-          if (iframe.parentNode) {
-            iframe.parentNode.removeChild(iframe)
-          }
-        } catch {}
-      }
+      const cleanup = () => { try { if (iframe.parentNode) iframe.parentNode.removeChild(iframe) } catch {} }
 
-      setTimeout(() => {
-        try {
-          if (iframe.contentWindow) {
-            iframe.contentWindow.onbeforeunload = null
-            iframe.contentWindow.onunload = null
-            iframe.contentWindow.onafterprint = cleanup
-            iframe.contentWindow.focus()
-            iframe.contentWindow.print()
+      // Use requestAnimationFrame so the print() stays as close to the
+      // user-gesture chain as possible. This is safer than setTimeout(200)
+      // on iOS Safari which blocks programmatic print() after a delay.
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          try {
+            if (iframe.contentWindow) {
+              iframe.contentWindow.onbeforeunload = null
+              iframe.contentWindow.onunload = null
+              iframe.contentWindow.onafterprint = cleanup
+              iframe.contentWindow.focus()
+              iframe.contentWindow.print()
+            }
+          } catch (err) {
+            console.warn('[BarcodePrintModal] Failed to execute print:', err)
+          } finally {
+            setTimeout(cleanup, 2500)
           }
-        } catch (err) {
-          console.warn('[BarcodePrintModal] Failed to execute print:', err)
-        } finally {
-          setTimeout(cleanup, 2500)
-        }
-      }, 200)
+        })
+      })
     } catch (err) {
       console.warn('[BarcodePrintModal] Failed to execute print:', err)
     }
   }
+  // Use inline style for dvh-based heights so they work regardless of whether
+  // Tailwind purges the arbitrary class. On Android Chrome, 100dvh correctly
+  // excludes the browser toolbar, preventing the footer from being clipped.
+  const overlayStyle: React.CSSProperties = {
+    ...(modalHeightVar ?? {}),
+    height: vvh ? `${vvh}px` : '100dvh',
+  }
 
   return createPortal(
-    <div className="fixed inset-0 top-0 left-0 right-0 bottom-0 w-screen h-screen h-[100dvh] z-[9999] flex items-center justify-center bg-black/75 backdrop-blur-sm p-0 sm:p-4 overflow-hidden animate-in fade-in duration-150">
+    <div
+      className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/75 backdrop-blur-sm p-0 sm:p-4 overflow-hidden animate-in fade-in duration-150"
+      style={overlayStyle}
+    >
       <div className="absolute inset-0" onClick={onClose} />
-      <div className="relative z-10 bg-white rounded-none sm:rounded-3xl max-w-2xl sm:max-w-3xl w-full h-screen h-[100dvh] sm:h-auto sm:max-h-[92vh] border-0 sm:border border-[#E8D399] shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-150">
+      <div
+        className="relative z-10 bg-white rounded-none sm:rounded-3xl max-w-2xl sm:max-w-3xl w-full sm:h-auto sm:max-h-[92dvh] border-0 sm:border border-[#E8D399] shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-150"
+        style={{ height: window.innerWidth < 640 ? (vvh ? `${vvh}px` : '100dvh') : undefined }}
+      >
         {/* Header */}
         <div className="bg-[#0A0A0A] px-4 py-3 sm:px-6 sm:py-4 border-b border-[#D4AF37]/30 flex items-center justify-between text-white shrink-0">
           <div className="flex items-center gap-3">
@@ -437,22 +484,11 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
                 <label className="block text-xs font-black uppercase tracking-wider text-gray-700 mb-1.5">
                   Label Sizing Preset
                 </label>
-                <select
-                  value={selectedPreset.name}
-                  onChange={(e) => {
-                    const preset = presets.find((p) => p.name === e.target.value)
-                    if (preset) setSelectedPreset(preset)
-                  }}
-                  className="w-full py-2.5 px-3 rounded-xl border-2 border-[#E8D399] bg-white font-bold text-xs sm:text-sm text-gray-900 outline-none focus:border-[#0A0A0A] shadow-sm cursor-pointer"
-                >
-                  {presets.map((p) => (
-                    <option key={p.name} value={p.name}>
-                      {p.name}
-                    </option>
-                  ))}
-                </select>
+                <div className="w-full py-2.5 px-3 rounded-xl border-2 border-[#E8D399] bg-white font-bold text-xs sm:text-sm text-gray-900 shadow-sm">
+                  {selectedPreset.name}
+                </div>
                 <p className="text-[11px] text-gray-500 mt-1">
-                  Dimensions: {selectedPreset.widthMm}mm × {selectedPreset.heightMm}mm
+                  Dimensions: {selectedPreset.widthMm}mm × {selectedPreset.heightMm}mm · change in Barcode Settings
                 </p>
               </div>
             </div>
@@ -521,7 +557,8 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
                 Sticker Print Preview
               </label>
               <span className="text-[11px] font-bold text-[#B48811]">
-                {quantity || 1} {quantity === '1' ? 'Label' : 'Labels'} • {selectedPreset.widthMm} × {selectedPreset.heightMm} mm ({printerType === 'label' ? 'Roll' : 'A4 Sheet'})
+                {quantity || 1} {quantity === '1' ? 'Label' : 'Labels'} • {selectedPreset.widthMm} × {selectedPreset.heightMm} mm
+                {selectedPreset.labelsPerRow > 1 ? ` • ${selectedPreset.labelsPerRow}-Up` : ''} ({printerType === 'label' ? 'Roll' : 'A4 Sheet'})
               </span>
             </div>
             <div className="bg-[#FBFAF6] border-2 border-dashed border-[#E8D399] rounded-2xl py-6 px-4 flex items-center justify-center min-h-[140px]">
@@ -539,22 +576,27 @@ export const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({
           </div>
         </div>
 
-        {/* Footer */}
-        <div className="bg-[#FBFAF6] px-4 py-3 sm:px-6 sm:py-3.5 border-t border-[#E8D399] flex items-center justify-between shrink-0 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] gap-2">
+        {/* Footer – sticky so it's always visible while body scrolls.
+             pb uses safe-area-inset-bottom to clear the iPhone gesture bar
+             and Android navigation bar. */}
+        <div
+          className="bg-[#FBFAF6] px-4 py-3 sm:px-6 sm:py-3.5 border-t border-[#E8D399] flex items-center justify-between shrink-0 gap-2 z-10"
+          style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
+        >
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 sm:px-5 sm:py-2.5 rounded-xl border border-gray-300 text-gray-700 font-bold text-xs sm:text-sm hover:bg-gray-100 transition-colors cursor-pointer shrink-0"
+            className="flex-1 sm:flex-none px-4 py-3 sm:px-5 sm:py-2.5 rounded-xl border border-gray-300 text-gray-700 font-bold text-xs sm:text-sm hover:bg-gray-100 transition-colors cursor-pointer min-h-[48px] sm:min-h-0"
           >
             Cancel
           </button>
           <button
             type="button"
             onClick={handlePrint}
-            className="flex items-center gap-1.5 sm:gap-2 px-4 py-2 sm:px-6 sm:py-2.5 rounded-xl bg-[#0A0A0A] border border-[#D4AF37] text-[#D4AF37] font-black hover:bg-[#1A1A1A] transition-all shadow-md cursor-pointer hover:scale-[1.02] text-xs sm:text-sm shrink-0"
+            className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 sm:gap-2 px-4 py-3 sm:px-6 sm:py-2.5 rounded-xl bg-[#0A0A0A] border border-[#D4AF37] text-[#D4AF37] font-black hover:bg-[#1A1A1A] transition-all shadow-md cursor-pointer hover:scale-[1.02] text-xs sm:text-sm min-h-[48px] sm:min-h-0"
           >
             <Printer size={16} />
-            Print {quantity || '1'} {quantity === '1' ? 'Sticker' : 'Stickers'}
+            Print {quantity || '1'} {(parseInt(quantity, 10) || 1) === 1 ? 'Sticker' : 'Stickers'}
           </button>
         </div>
       </div>

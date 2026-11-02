@@ -47,7 +47,9 @@ import { Invoice } from '../components/Invoice'
 import { printThermalReceipt } from '../lib/thermalPrint'
 import { buildProfessionalWhatsAppMessage } from '../lib/whatsappMessage'
 import { invoicePdfFile } from '../lib/invoicePdf'
-import { formatPhoneForCSV } from '../lib/phone'
+import { formatPhoneForCSV, formatPhone } from '../lib/phone'
+import { getDateRange, isInRange, formatLocalDate } from '../lib/dateRange'
+import { useDebouncedValue } from '../lib/debounce'
 // toWhatsAppUrl removed - using direct link building in handlers
 import { createVariant, updateVariant, deleteVariant, setDefaultVariant, type ProductVariant } from '../services/variantService'
 import { useVariantStore } from '../store/store'
@@ -143,7 +145,7 @@ const exportCSV = (orders: DashboardOrder[]) => {
   const rows = orders.map(o => {
     let dateStr = ''
     try {
-      dateStr = new Date(o.created_at).toISOString().slice(0, 10)
+      dateStr = formatLocalDate(new Date(o.created_at))
     } catch {
       dateStr = String(o.created_at || '')
     }
@@ -162,7 +164,7 @@ const exportCSV = (orders: DashboardOrder[]) => {
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
-  a.download = `orders_${new Date().toISOString().slice(0, 10)}.csv`
+  a.download = `orders_${formatLocalDate(new Date())}.csv`
   a.click()
   URL.revokeObjectURL(url)
 }
@@ -299,6 +301,14 @@ export default function Dashboard() {
   const [userSearch, setUserSearch] = useState('')
   const [roleUpdating, setRoleUpdating] = useState<string | null>(null)
 
+  // Debounced search queries (300ms auto-apply)
+  const [debouncedQuickSearch, flushQuickSearch] = useDebouncedValue(historyQuickSearch, 300)
+  const [debouncedSearch, flushAdvancedSearch] = useDebouncedValue(search, 300)
+  const [debouncedTodayBillsSearch] = useDebouncedValue(todayBillsSearch, 300)
+  const [debouncedProductAnalyticsSearch] = useDebouncedValue(productAnalyticsSearch, 300)
+  const [debouncedUserSearch] = useDebouncedValue(userSearch, 300)
+  const [debouncedInventorySearch] = useDebouncedValue(inventorySearch, 300)
+
   const isAdmin = true // bypassed for local demo
   const l = (en: string, _ta?: string) => en
 
@@ -419,12 +429,20 @@ export default function Dashboard() {
     setOrderItems(current => [...completedItems.map(item => ({ order_id: completed.id, product_name: String(item.name || 'Product'), category: String(item.category || advance.category || ''), quantity: Number(item.quantity || 1), line_total: Number(item.line_total || 0), is_manual: false })), ...current.filter(row => row.order_id !== completed.id)])
   }, [user?.id])
 
+  const analyticsDateRange = useMemo(() => {
+    return getDateRange(analyticsDatePreset, new Date(), {
+      from: analyticsDateFrom,
+      to: analyticsDateTo,
+    })
+  }, [analyticsDatePreset, analyticsDateFrom, analyticsDateTo])
+
   // Analytics (date-aware)
   const analytics = useMemo(() => {
     // Apply global date filter
     let dated = orders
-    if (analyticsDateFrom) dated = dated.filter(o => o.created_at >= `${analyticsDateFrom}T00:00:00`)
-    if (analyticsDateTo)   dated = dated.filter(o => o.created_at <= `${analyticsDateTo}T23:59:59`)
+    if (analyticsDateRange) {
+      dated = dated.filter(o => isInRange(o.created_at, analyticsDateRange))
+    }
 
     // Classify
     const nonCancelled = dated.filter(o => normalizeStatus(o.status) !== 'cancelled')
@@ -458,8 +476,9 @@ export default function Dashboard() {
     // Expenses & Net Profit calculation:
     // Net Profit = Revenue (total selling based on orders) - Total Expense (from expense tracker)
     let datedExpenses = expenses
-    if (analyticsDateFrom) datedExpenses = datedExpenses.filter(e => e.expense_date >= analyticsDateFrom)
-    if (analyticsDateTo)   datedExpenses = datedExpenses.filter(e => e.expense_date <= analyticsDateTo)
+    if (analyticsDateRange) {
+      datedExpenses = datedExpenses.filter(e => isInRange(e.expense_date, analyticsDateRange))
+    }
     const totalExpenses = datedExpenses.reduce((s, e) => s + (Number(e.amount) || 0), 0)
     const netProfit = completedRevenue - totalExpenses
     const isProfitable = netProfit >= 0
@@ -790,20 +809,79 @@ export default function Dashboard() {
       netProfit,
       isProfitable,
     }
-  }, [orders, orderItems, products, coupons, expenses, analyticsDateFrom, analyticsDateTo])
+  }, [orders, orderItems, products, coupons, expenses, analyticsDateRange])
 
-  // Bill-type filtered results for Order Management table (client-side, instant)
+  // History Date Range for Order Management
+  const historyDateRange = useMemo(() => {
+    return getDateRange(datePreset, new Date(), {
+      from: debouncedSearch.dateFrom,
+      to: debouncedSearch.dateTo,
+    })
+  }, [datePreset, debouncedSearch.dateFrom, debouncedSearch.dateTo])
+
+  // Filtered results for Order Management table (client-side, 100% reactive & derived from orders)
   const filteredSearchResults = useMemo(() => {
-    if (billTypeFilter === 'all') return searchResults
-    return searchResults.filter(o => {
+    const qText = debouncedQuickSearch.trim()
+    const invInput = debouncedSearch.invoiceNo.trim()
+    const phoneInput = debouncedSearch.phone.trim()
+    const custInput = debouncedSearch.customerName.trim()
+
+    return orders.filter(o => {
+      if (deletedOrderIds.current.has(o.id)) return false
+      if (normalizeOrderType(o.order_type) === 'online_request') return false
+
+      // Bill Type filter
       const type = normalizeOrderType(o.order_type)
       const mode = normalizeOrderMode(o.order_mode)
-      if (billTypeFilter === 'manual')  return type === 'manual_sale'
-      if (billTypeFilter === 'offline') return type === 'pos_sale' && mode !== 'online'
-      if (billTypeFilter === 'online')  return type === 'pos_sale' && mode === 'online'
+      if (billTypeFilter === 'manual' && type !== 'manual_sale') return false
+      if (billTypeFilter === 'offline' && !(type === 'pos_sale' && mode !== 'online')) return false
+      if (billTypeFilter === 'online' && !(type === 'pos_sale' && mode === 'online')) return false
+
+      // Date Range filter
+      if (historyDateRange && !isInRange(o.created_at, historyDateRange)) {
+        return false
+      }
+
+      // Quick Search query
+      if (qText) {
+        const qLower = qText.toLowerCase()
+        const matchInv = o.invoice_no.toLowerCase().includes(qLower) || formatInvoiceNo(o.invoice_no).toLowerCase().includes(qLower) || o.id.toLowerCase() === qLower
+        const matchCust = o.customer_name.toLowerCase().includes(qLower)
+        const matchPhone = o.phone.toLowerCase().includes(qLower)
+        const qDigits = qText.replace(/\D/g, '')
+        const rawInvDigits = o.invoice_no.replace(/\D/g, '')
+        const rawPhoneDigits = o.phone.replace(/\D/g, '')
+        const matchInvDigits = Boolean(qDigits && (rawInvDigits.endsWith(qDigits) || rawInvDigits.includes(qDigits)))
+        const matchPhoneDigits = Boolean(qDigits && qDigits.length >= 4 && rawPhoneDigits.includes(qDigits))
+        if (!matchInv && !matchCust && !matchPhone && !matchInvDigits && !matchPhoneDigits) return false
+      }
+
+      // Advanced Search fields
+      if (invInput) {
+        const matchRaw = o.invoice_no.toLowerCase().includes(invInput.toLowerCase())
+        const matchFmt = formatInvoiceNo(o.invoice_no).toLowerCase().includes(invInput.toLowerCase())
+        const matchId  = o.id.toLowerCase() === invInput.toLowerCase()
+        const invDigits = invInput.replace(/\D/g, '')
+        const rawDigits = o.invoice_no.replace(/\D/g, '')
+        const matchDigits = invDigits && (rawDigits.endsWith(invDigits) || rawDigits.includes(invDigits))
+        if (!matchRaw && !matchFmt && !matchId && !matchDigits) return false
+      }
+
+      if (custInput) {
+        if (!o.customer_name.toLowerCase().includes(custInput.toLowerCase())) return false
+      }
+
+      if (phoneInput) {
+        const pDigits = phoneInput.replace(/\D/g, '')
+        const rawPhoneDigits = o.phone.replace(/\D/g, '')
+        const matchPhoneRaw = o.phone.toLowerCase().includes(phoneInput.toLowerCase())
+        const matchPhoneDigits = Boolean(pDigits && rawPhoneDigits.includes(pDigits))
+        if (!matchPhoneRaw && !matchPhoneDigits) return false
+      }
+
       return true
     })
-  }, [searchResults, billTypeFilter])
+  }, [orders, billTypeFilter, historyDateRange, debouncedQuickSearch, debouncedSearch])
 
   // Load dashboard data
   const loadData = useCallback(async () => {
@@ -1149,33 +1227,25 @@ export default function Dashboard() {
     setAnalyticsDatePreset(preset)
     if (preset === 'all')    { setAnalyticsDateFrom(''); setAnalyticsDateTo(''); return }
     if (preset === 'custom') return
-    const today = new Date()
-    const todayStr = today.toISOString().slice(0, 10)
-    if (preset === 'today') {
-      setAnalyticsDateFrom(todayStr); setAnalyticsDateTo(todayStr)
-    } else if (preset === 'week') {
-      const d = new Date(today); d.setDate(today.getDate() - 6)
-      setAnalyticsDateFrom(d.toISOString().slice(0, 10)); setAnalyticsDateTo(todayStr)
-    } else if (preset === 'month') {
-      setAnalyticsDateFrom(`${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-01`)
-      setAnalyticsDateTo(todayStr)
-    } else if (preset === 'year') {
-      setAnalyticsDateFrom(`${today.getFullYear()}-01-01`); setAnalyticsDateTo(todayStr)
+    const range = getDateRange(preset, new Date())
+    if (range && range.start && range.end) {
+      setAnalyticsDateFrom(formatLocalDate(range.start))
+      setAnalyticsDateTo(formatLocalDate(range.end))
     }
   }
 
-  const applyDatePreset = (preset: 'today' | 'week' | 'month' | 'custom') => {
+  const applyDatePreset = (preset: 'today' | 'week' | 'month' | 'custom' | '') => {
     setDatePreset(preset)
-    if (preset === 'custom') { setSearch(s => ({ ...s, dateFrom: '', dateTo: '' })); return }
-    const today = new Date()
-    const todayStr = today.toISOString().slice(0, 10)
-    if (preset === 'today') {
-      setSearch(s => ({ ...s, dateFrom: todayStr, dateTo: todayStr }))
-    } else if (preset === 'week') {
-      const weekAgo = new Date(today); weekAgo.setDate(today.getDate() - 6)
-      setSearch(s => ({ ...s, dateFrom: weekAgo.toISOString().slice(0, 10), dateTo: todayStr }))
-    } else if (preset === 'month') {
-      setSearch(s => ({ ...s, dateFrom: `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-01`, dateTo: todayStr }))
+    if (!preset || preset === 'custom') { setSearch(s => ({ ...s, dateFrom: '', dateTo: '' })); return }
+    const range = getDateRange(preset, new Date())
+    if (range && range.start && range.end) {
+      const s = range.start
+      const e = range.end
+      setSearch(prev => ({
+        ...prev,
+        dateFrom: formatLocalDate(s),
+        dateTo: formatLocalDate(e)
+      }))
     }
   }
 
@@ -1185,7 +1255,6 @@ export default function Dashboard() {
     setDatePreset('')
     setBillTypeFilter('all')
     setShowAdvancedFilters(false)
-    void loadData()
   }
 
   const activeHistoryFiltersCount = useMemo(() => {
@@ -1201,6 +1270,8 @@ export default function Dashboard() {
   // Order search - POS bills only (online_request excluded)
   const runSearch = async (e?: FormEvent) => {
     e?.preventDefault()
+    flushQuickSearch()
+    flushAdvancedSearch()
     setSearchLoading(true)
     try {
       const qText = historyQuickSearch.trim()
@@ -1320,6 +1391,14 @@ export default function Dashboard() {
         if (localMatches.length > 0) {
           results = localMatches
         }
+      }
+
+      if (results.length > 0) {
+        setOrders(prev => {
+          const existing = new Set(prev.map(o => o.id))
+          const newOrders = results.filter(o => !existing.has(o.id))
+          return newOrders.length > 0 ? [...prev, ...newOrders] : prev
+        })
       }
 
       setSearchResults(results.filter(o => !deletedOrderIds.current.has(o.id)))
@@ -1765,7 +1844,7 @@ export default function Dashboard() {
         {/* ── BUSINESS CONTROL CENTER ── */}
         {/* ── BUSINESS CONTROL CENTER ── */}
         {tab === 'overview' && (() => {
-          const latestPOS = searchResults.slice(0, 10)
+          const latestPOS = orders.filter(o => normalizeOrderType(o.order_type) !== 'online_request').slice(0, 10)
           return (
           <div className="space-y-6 rounded-[28px] bg-[#0A0A0A] p-5 sm:p-6 lg:p-7 shadow-2xl border border-white/10 text-white">
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -1953,13 +2032,13 @@ export default function Dashboard() {
                   <div className="bg-blue-50 border border-blue-100 p-5 rounded-xl mb-4">
                     <p className="text-[11px] uppercase tracking-wider font-bold text-blue-800 mb-1">Unique Customers</p>
                     <p className="text-[24px] font-black text-blue-900">
-                      {new Set(searchResults.filter(o => o.phone).map(o => o.phone)).size}
+                      {new Set(orders.filter(o => o.phone && normalizeOrderType(o.order_type) !== 'online_request').map(o => o.phone)).size}
                     </p>
                   </div>
                   <div className="bg-[#F9FAFB] p-5 rounded-xl">
                     <p className="text-[11px] uppercase tracking-wider font-bold text-[#374151] mb-1">Avg Order Value</p>
                     <p className="text-[24px] font-black text-[#111111]">
-                      {formatCurrency(analytics.totalCompletedRevenue / (searchResults.filter(o => isCompletedStatus(o.status)).length || 1))}
+                      {formatCurrency(analytics.totalCompletedRevenue / (orders.filter(o => isCompletedStatus(o.status) && normalizeOrderType(o.order_type) !== 'online_request').length || 1))}
                     </p>
                   </div>
                 </div>
@@ -1973,12 +2052,12 @@ export default function Dashboard() {
                   <div className="space-y-4">
                     <div className="bg-[#F9FAFB] p-4 rounded-xl flex justify-between items-center">
                       <span className="text-[13px] font-bold text-[#374151]">Total Invoices Generated</span>
-                      <span className="text-[16px] font-black text-[#111111]">{searchResults.length}</span>
+                      <span className="text-[16px] font-black text-[#111111]">{orders.filter(o => normalizeOrderType(o.order_type) !== 'online_request').length}</span>
                     </div>
                     <div className="bg-[#F9FAFB] p-4 rounded-xl flex justify-between items-center">
                       <span className="text-[13px] font-bold text-[#374151]">Discounts Applied</span>
                       <span className="text-[16px] font-black text-[#10B981]">
-                        {formatCurrency(searchResults.reduce((acc, o) => acc + (toNumber(o.discount_amount, 0)), 0))}
+                        {formatCurrency(orders.filter(o => normalizeOrderType(o.order_type) !== 'online_request').reduce((acc, o) => acc + (toNumber(o.discount_amount, 0)), 0))}
                       </span>
                     </div>
                   </div>
@@ -2100,7 +2179,7 @@ export default function Dashboard() {
                           <React.Fragment key={order.id}>
                             <tr className={`hover:bg-blue-50/40 align-middle ${isExpanded ? 'bg-blue-50/30' : ''}`}>
                               <td className="px-4 py-3 font-bold text-[#111111] whitespace-nowrap">{order.customer_name || '-'}</td>
-                              <td className="px-4 py-3 text-[#374151] whitespace-nowrap">{order.phone || '-'}</td>
+                              <td className="px-4 py-3 text-[#374151] whitespace-nowrap">{formatPhone(order.phone, '-')}</td>
                               <td className="px-4 py-3 text-[#7A846F] max-w-[140px] truncate" title={order.address || '-'}>{order.address || '-'}</td>
                               <td className="px-4 py-3 text-center">
                                 <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-blue-100 text-blue-700 text-[11px] font-black">{its.length}</span>
@@ -2149,7 +2228,7 @@ export default function Dashboard() {
                                     {/* Customer info bar */}
                                     <div className="flex flex-wrap gap-4 text-[12px] bg-white rounded-xl p-3 border border-blue-100">
                                       <div><span className="font-black text-[#374151]">{l('Name', 'பெயர்')}: </span><span className="font-bold text-[#111111]">{order.customer_name || '-'}</span></div>
-                                      <div><span className="font-black text-[#374151]">{l('Phone', 'தொலைபேசி')}: </span><span className="font-bold text-[#111111]">{order.phone || '-'}</span></div>
+                                      <div><span className="font-black text-[#374151]">{l('Phone', 'தொலைபேசி')}: </span><span className="font-bold text-[#111111]">{formatPhone(order.phone, '-')}</span></div>
                                       <div className="flex-1"><span className="font-black text-[#374151]">{l('Address', 'முகவரி')}: </span><span className="text-[#111111]">{order.address || '-'}</span></div>
                                       {Boolean(order.remarks) && (
                                         <div className="w-full mt-1 border-t border-blue-50 pt-2"><span className="font-black text-[#374151]">Remarks: </span><span className="font-bold text-[#111111]">{order.remarks}</span></div>
@@ -2161,16 +2240,16 @@ export default function Dashboard() {
 
                                     {/* Items table */}
                                     {its.length > 0 && (
-                                      <div className="overflow-x-auto">
-                                        <table className="w-full text-[12px] min-w-[540px] bg-white rounded-xl overflow-hidden border border-blue-100">
+                                      <div className="overflow-x-auto w-full invoice-billing-table-wrapper">
+                                        <table className="w-full text-[12px] min-w-[540px] bg-white rounded-xl overflow-hidden border border-blue-100 invoice-billing-table">
                                           <thead className="bg-[#F9FAFB]">
-                                            <tr className="text-left text-[#374151] font-black text-[10px] uppercase tracking-wider">
-                                              <th className="px-4 py-2.5">{l('Product', 'பொருள்')}</th>
-                                              <th className="px-4 py-2.5">{l('Variant', 'வகைப்படி')}</th>
-                                              <th className="px-4 py-2.5">{l('Size / Weight', 'அளவு / எடை')}</th>
-                                              <th className="px-4 py-2.5 text-center">{l('Qty', 'அளவு')}</th>
-                                              <th className="px-4 py-2.5">{l('Unit Price', 'ஒரு விலை')}</th>
-                                              <th className="px-4 py-2.5 text-right">{l('Line Total', 'வரி மொத்தம்')}</th>
+                                            <tr className="text-left text-[#374151] font-black text-[9px] sm:text-[10px] uppercase tracking-wider">
+                                              <th className="px-2.5 py-2 sm:px-4 sm:py-2.5 min-w-[120px] w-auto whitespace-normal invoice-product-col" style={{ minWidth: '120px', width: 'auto' }}>{l('Product', 'பொருள்')}</th>
+                                              <th className="px-2.5 py-2 sm:px-4 sm:py-2.5">{l('Variant', 'வகைப்படி')}</th>
+                                              <th className="px-2.5 py-2 sm:px-4 sm:py-2.5">{l('Size / Weight', 'அளவு / எடை')}</th>
+                                              <th className="px-2.5 py-2 sm:px-4 sm:py-2.5 text-center">{l('Qty', 'அளவு')}</th>
+                                              <th className="px-2.5 py-2 sm:px-4 sm:py-2.5">{l('Unit Price', 'ஒரு விலை')}</th>
+                                              <th className="px-2.5 py-2 sm:px-4 sm:py-2.5 text-right">{l('Line Total', 'வரி மொத்தம்')}</th>
                                             </tr>
                                           </thead>
                                           <tbody className="divide-y divide-[#E5E7EB]/20">
@@ -2193,12 +2272,16 @@ export default function Dashboard() {
                                               const priceLabel = formatCurrency(basePrice)
                                               return (
                                                 <tr key={idx} className="hover:bg-blue-50/20">
-                                                  <td className="px-4 py-2.5 font-bold text-[#111111]">{prodName}</td>
-                                                  <td className="px-4 py-2.5 text-[#374151]">{variant}</td>
-                                                  <td className="px-4 py-2.5 text-[#374151]">{sizeLabel}</td>
-                                                  <td className="px-4 py-2.5 text-center font-bold">{qty}</td>
-                                                  <td className="px-4 py-2.5 text-[#374151]">{priceLabel}</td>
-                                                  <td className="px-4 py-2.5 font-black text-[#111111] text-right">{formatCurrency(lineTotal)}</td>
+                                                  <td className="px-2.5 py-2 sm:px-4 sm:py-2.5 font-bold text-[#111111] min-w-[120px] w-auto invoice-product-cell" style={{ minWidth: '120px', width: 'auto', whiteSpace: 'normal', wordBreak: 'normal', overflowWrap: 'break-word', hyphens: 'none' }}>
+                                                    <span className="invoice-product-qty-name" style={{ display: 'inline', whiteSpace: 'normal', wordBreak: 'normal', overflowWrap: 'break-word', hyphens: 'none' }}>
+                                                      {prodName}
+                                                    </span>
+                                                  </td>
+                                                  <td className="px-2.5 py-2 sm:px-4 sm:py-2.5 text-[#374151]">{variant}</td>
+                                                  <td className="px-2.5 py-2 sm:px-4 sm:py-2.5 text-[#374151]">{sizeLabel}</td>
+                                                  <td className="px-2.5 py-2 sm:px-4 sm:py-2.5 text-center font-bold">{qty}</td>
+                                                  <td className="px-2.5 py-2 sm:px-4 sm:py-2.5 text-[#374151]">{priceLabel}</td>
+                                                  <td className="px-2.5 py-2 sm:px-4 sm:py-2.5 font-black text-[#111111] text-right">{formatCurrency(lineTotal)}</td>
                                                 </tr>
                                               )
                                             })}
@@ -2709,11 +2792,11 @@ export default function Dashboard() {
                       placeholder="Search by invoice number..."
                       value={todayBillsSearch}
                       onChange={e => setTodayBillsSearch(e.target.value)}
-                      className="w-full px-4 py-2.5 bg-[#F9FAFB] border border-[#E5E7EB]/60 rounded-xl text-[13px] font-bold text-[#111111] placeholder:text-[#8A9384] focus:outline-none focus:border-[#D4AF37] transition-colors"
+                      className="w-full px-4 py-2 bg-[#F9FAFB] border border-[#E5E7EB]/60 rounded-xl text-xs sm:text-[13px] font-semibold text-[#111111] placeholder:text-[#8A9384] focus:outline-none focus:border-[#D4AF37] transition-colors"
                     />
                   </div>
                   {(() => {
-                    const filteredBills = analytics.todayBills.filter(b => !todayBillsSearch || b.invoice_no?.toLowerCase().includes(todayBillsSearch.toLowerCase()))
+                    const filteredBills = analytics.todayBills.filter(b => !debouncedTodayBillsSearch || b.invoice_no?.toLowerCase().includes(debouncedTodayBillsSearch.toLowerCase()))
                     return filteredBills.length > 0 ? (
                     <div className="overflow-x-auto rounded-xl border border-[#E5E7EB]/30">
                       <table className="w-full min-w-[480px] text-[12px]">
@@ -2762,9 +2845,9 @@ export default function Dashboard() {
                 {/* Key metrics row: Revenue is 1st KPI card */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                   {[
-                    { label: 'Total Product Revenue', value: formatCurrency(analytics.totalCompletedRevenue), icon: <RMIcon size={18} />, from: 'from-emerald-500 to-teal-600' },
-                    { label: 'Total Products Sold', value: String(Math.round(analytics.totalProductsSold)), icon: <Package size={18} />, from: 'from-blue-500 to-indigo-600' },
-                    { label: 'Average Product Revenue', value: `${formatCurrency(analytics.averageProductRevenue)} / Product`, icon: <RMIcon size={18} />, from: 'from-violet-500 to-purple-600' },
+                    { label: 'Total Product Revenue', value: formatCurrency(analytics.totalCompletedRevenue), icon: <RMIcon size={18} />, from: 'from-emerald-500 to-teal-600', nowrap: true },
+                    { label: 'Total Products Sold', value: String(Math.round(analytics.totalProductsSold)), icon: <Package size={18} />, from: 'from-blue-500 to-indigo-600', nowrap: true },
+                    { label: 'Average Product Revenue', value: formatCurrency(analytics.averageProductRevenue), icon: <RMIcon size={18} />, from: 'from-violet-500 to-purple-600', nowrap: true },
                     { label: 'Top Product', value: analytics.bestProduct || 'No sales yet', icon: <Trophy size={18} />, from: 'from-amber-500 to-orange-600' },
                   ].map((card, i) => (
                     <div key={i} className={`relative overflow-hidden rounded-2xl p-5 shadow-lg border border-white/20 bg-gradient-to-br ${card.from} flex flex-col justify-between min-h-[120px]`}>
@@ -2774,7 +2857,7 @@ export default function Dashboard() {
                           <p className="text-[10px] uppercase font-black text-white/80 tracking-wider">{card.label}</p>
                           <div className="w-9 h-9 rounded-xl bg-white/25 backdrop-blur-sm flex items-center justify-center text-white shadow-sm shrink-0">{card.icon}</div>
                         </div>
-                        <p className="text-[18px] sm:text-[22px] font-extrabold text-white drop-shadow-sm break-words leading-tight">{card.value}</p>
+                        <p className={`text-[18px] sm:text-[22px] font-extrabold text-white drop-shadow-sm leading-tight ${card.nowrap ? 'whitespace-nowrap' : 'break-words'}`}>{card.value}</p>
                       </div>
                     </div>
                   ))}
@@ -2795,13 +2878,13 @@ export default function Dashboard() {
                       placeholder="Search by Product Name, SKU, or Category..."
                       value={productAnalyticsSearch}
                       onChange={e => setProductAnalyticsSearch(e.target.value)}
-                      className="w-full px-4 py-2.5 bg-[#F9FAFB] border border-[#E5E7EB]/60 rounded-xl text-[13px] font-bold text-[#111111] placeholder:text-[#8A9384] focus:outline-none focus:border-[#D4AF37] transition-colors"
+                      className="w-full px-4 py-2 bg-[#F9FAFB] border border-[#E5E7EB]/60 rounded-xl text-xs sm:text-[13px] font-semibold text-[#111111] placeholder:text-[#8A9384] focus:outline-none focus:border-[#D4AF37] transition-colors"
                     />
                   </div>
                   {(() => {
                     const filteredProds = analytics.topProducts.filter(p => {
-                      if (!productAnalyticsSearch.trim()) return true
-                      const q = productAnalyticsSearch.toLowerCase()
+                      if (!debouncedProductAnalyticsSearch.trim()) return true
+                      const q = debouncedProductAnalyticsSearch.toLowerCase()
                       return p.name.toLowerCase().includes(q) || (p.variant && p.variant.toLowerCase().includes(q))
                     })
                     return filteredProds.length > 0 ? (
@@ -3121,6 +3204,13 @@ export default function Dashboard() {
               if (adv) handleAdvanceOrderCompleted(adv)
               void loadData()
             }}
+            onOrderDeleted={(completedOrderId) => {
+              if (completedOrderId) {
+                setOrders(prev => prev.filter(o => o.id !== completedOrderId))
+                setSearchResults(prev => prev.filter(o => o.id !== completedOrderId))
+                void loadData()
+              }
+            }}
           />
         )}
 
@@ -3148,7 +3238,7 @@ export default function Dashboard() {
                       <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
                       <input
                         type="text"
-                        className="w-full h-11 pl-9 pr-8 rounded-xl bg-[#F9FAFB] border border-gray-200 text-xs sm:text-[13px] font-semibold text-[#111111] placeholder:text-gray-400 focus:outline-none focus:border-[#D4AF37] focus:ring-1 focus:ring-[#D4AF37] transition-all"
+                        className="w-full h-10 sm:h-11 pl-10 pr-8 rounded-xl bg-[#F9FAFB] border border-gray-200 text-[11px] sm:text-xs font-semibold text-[#111111] placeholder:text-gray-400 placeholder:font-normal focus:outline-none focus:border-[#D4AF37] focus:ring-1 focus:ring-[#D4AF37] transition-all"
                         placeholder={l('Search by Invoice, Customer, Phone...', 'பில் எண், வாடிக்கையாளர், போன் எண்...')}
                         value={historyQuickSearch}
                         onChange={e => setHistoryQuickSearch(e.target.value)}
@@ -3156,7 +3246,7 @@ export default function Dashboard() {
                       {historyQuickSearch && (
                         <button
                           type="button"
-                          onClick={() => { setHistoryQuickSearch(''); void loadData() }}
+                          onClick={() => setHistoryQuickSearch('')}
                           className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-200 transition-colors"
                           title="Clear"
                         >
@@ -3169,7 +3259,7 @@ export default function Dashboard() {
                     <button
                       type="submit"
                       disabled={searchLoading}
-                      className="h-11 px-3.5 sm:px-4 rounded-xl bg-[#D4AF37] text-white text-xs font-bold shadow-sm flex items-center justify-center gap-1.5 shrink-0 hover:bg-[#b89528] disabled:opacity-50 transition-colors cursor-pointer"
+                      className="h-10 sm:h-11 px-3 sm:px-4 rounded-xl bg-[#D4AF37] text-white text-xs font-bold shadow-sm flex items-center justify-center gap-1.5 shrink-0 hover:bg-[#b89528] disabled:opacity-50 transition-colors cursor-pointer"
                     >
                       {searchLoading ? (
                         <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
@@ -3181,20 +3271,20 @@ export default function Dashboard() {
                   </div>
 
                   {/* Dropdown controls & Filters toggle in a 3-column grid on mobile with generous width */}
-                  <div className="grid grid-cols-3 gap-2 shrink-0 w-full lg:w-auto">
+                  <div className="grid grid-cols-3 gap-1.5 sm:gap-2 shrink-0 w-full lg:w-auto">
                     {/* Bill Type Dropdown */}
                     <div className="relative min-w-0">
                       <select
                         value={billTypeFilter}
                         onChange={e => setBillTypeFilter(e.target.value as typeof billTypeFilter)}
-                        className="w-full lg:w-32 h-11 appearance-none pl-2.5 pr-6 rounded-xl bg-[#F9FAFB] border border-gray-200 text-xs font-bold text-gray-800 focus:outline-none focus:border-[#D4AF37] cursor-pointer hover:bg-gray-100 transition-colors truncate"
+                        className="w-full lg:w-32 h-10 sm:h-11 appearance-none pl-2 sm:pl-2.5 pr-5 sm:pr-6 rounded-xl bg-[#F9FAFB] border border-gray-200 text-[10.5px] sm:text-xs font-semibold text-gray-800 focus:outline-none focus:border-[#D4AF37] cursor-pointer hover:bg-gray-100 transition-colors truncate"
                       >
                         <option value="all">{l('All Bills', 'அனைத்து')}</option>
                         <option value="offline">{l('Offline', 'ஆஃப்லைன்')}</option>
                         <option value="online">{l('Online', 'ஆன்லைன்')}</option>
                         <option value="manual">{l('Manual', 'கைமுறை')}</option>
                       </select>
-                      <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
+                      <ChevronDown size={11} className="absolute right-1.5 sm:right-2 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
                     </div>
 
                     {/* Date Preset Dropdown */}
@@ -3213,7 +3303,7 @@ export default function Dashboard() {
                             }
                           }
                         }}
-                        className="w-full lg:w-32 h-11 appearance-none pl-2.5 pr-6 rounded-xl bg-[#F9FAFB] border border-gray-200 text-xs font-bold text-gray-800 focus:outline-none focus:border-[#D4AF37] cursor-pointer hover:bg-gray-100 transition-colors truncate"
+                        className="w-full lg:w-32 h-10 sm:h-11 appearance-none pl-2 sm:pl-2.5 pr-5 sm:pr-6 rounded-xl bg-[#F9FAFB] border border-gray-200 text-[10.5px] sm:text-xs font-semibold text-gray-800 focus:outline-none focus:border-[#D4AF37] cursor-pointer hover:bg-gray-100 transition-colors truncate"
                       >
                         <option value="">{l('All Dates', 'தேதி: அனைத்து')}</option>
                         <option value="today">{l('Today', 'இன்று')}</option>
@@ -3221,28 +3311,28 @@ export default function Dashboard() {
                         <option value="month">{l('This Month', 'இந்த மாதம்')}</option>
                         <option value="custom">{l('Custom...', 'தேர்வு...')}</option>
                       </select>
-                      <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
+                      <ChevronDown size={11} className="absolute right-1.5 sm:right-2 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
                     </div>
 
                     {/* Advanced Filters Toggle Button */}
                     <button
                       type="button"
                       onClick={() => setShowAdvancedFilters(v => !v)}
-                      className={`w-full lg:w-auto h-11 px-2.5 sm:px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-1 sm:gap-1.5 transition-colors cursor-pointer min-w-0 ${
+                      className={`w-full lg:w-auto h-10 sm:h-11 px-2 sm:px-3 rounded-xl border text-[10.5px] sm:text-xs font-semibold flex items-center justify-center gap-1 sm:gap-1.5 transition-colors cursor-pointer min-w-0 ${
                         showAdvancedFilters || activeHistoryFiltersCount > 0
                           ? 'bg-[#111111] text-white border-[#111111]'
                           : 'bg-[#F9FAFB] text-gray-700 border-gray-200 hover:bg-gray-100'
                       }`}
                       title="Toggle detailed filters"
                     >
-                      <SlidersHorizontal size={12} className="shrink-0" />
+                      <SlidersHorizontal size={11} className="shrink-0" />
                       <span className="truncate">{l('Filters', 'வடிகட்டி')}</span>
                       {activeHistoryFiltersCount > 0 && (
-                        <span className="w-4 h-4 rounded-full bg-[#D4AF37] text-black text-[9px] font-black flex items-center justify-center shrink-0">
+                        <span className="w-3.5 h-3.5 rounded-full bg-[#D4AF37] text-black text-[9px] font-black flex items-center justify-center shrink-0">
                           {activeHistoryFiltersCount}
                         </span>
                       )}
-                      <ChevronDown size={11} className={`transition-transform duration-200 shrink-0 ${showAdvancedFilters ? 'rotate-180' : ''}`} />
+                      <ChevronDown size={10} className={`transition-transform duration-200 shrink-0 ${showAdvancedFilters ? 'rotate-180' : ''}`} />
                     </button>
                   </div>
                 </div>
@@ -3345,16 +3435,34 @@ export default function Dashboard() {
                       <button type="button" onClick={() => setBillTypeFilter('all')} className="hover:text-red-600 cursor-pointer"><X size={11} /></button>
                     </span>
                   )}
-                  {datePreset && (
+                  {(datePreset || search.dateFrom || search.dateTo) && (
                     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 text-amber-900 border border-amber-200 text-[11px] font-semibold">
-                      Date: {datePreset === 'today' ? 'Today' : datePreset === 'week' ? 'This Week' : datePreset === 'month' ? 'This Month' : 'Custom'}
+                      Date: {datePreset === 'today' ? 'Today' : datePreset === 'week' ? 'This Week' : datePreset === 'month' ? 'This Month' : search.dateFrom && search.dateTo ? `${search.dateFrom} - ${search.dateTo}` : 'Custom'}
                       <button type="button" onClick={() => { setDatePreset(''); setSearch(s => ({ ...s, dateFrom: '', dateTo: '' })) }} className="hover:text-red-600 cursor-pointer"><X size={11} /></button>
+                    </span>
+                  )}
+                  {search.invoiceNo && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-gray-100 text-gray-800 text-[11px] font-semibold">
+                      Inv: {search.invoiceNo}
+                      <button type="button" onClick={() => setSearch(s => ({ ...s, invoiceNo: '' }))} className="hover:text-red-600 cursor-pointer"><X size={11} /></button>
+                    </span>
+                  )}
+                  {search.customerName && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-gray-100 text-gray-800 text-[11px] font-semibold">
+                      Cust: {search.customerName}
+                      <button type="button" onClick={() => setSearch(s => ({ ...s, customerName: '' }))} className="hover:text-red-600 cursor-pointer"><X size={11} /></button>
+                    </span>
+                  )}
+                  {search.phone && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-gray-100 text-gray-800 text-[11px] font-semibold">
+                      Phone: {search.phone}
+                      <button type="button" onClick={() => setSearch(s => ({ ...s, phone: '' }))} className="hover:text-red-600 cursor-pointer"><X size={11} /></button>
                     </span>
                   )}
                   {historyQuickSearch && (
                     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-50 text-blue-900 border border-blue-200 text-[11px] font-semibold">
                       "{historyQuickSearch}"
-                      <button type="button" onClick={() => { setHistoryQuickSearch(''); void loadData() }} className="hover:text-red-600 cursor-pointer"><X size={11} /></button>
+                      <button type="button" onClick={() => setHistoryQuickSearch('')} className="hover:text-red-600 cursor-pointer"><X size={11} /></button>
                     </span>
                   )}
                 </div>
@@ -3389,7 +3497,7 @@ export default function Dashboard() {
                         </div>
                         <div className="min-w-0">
                           <p className="text-[#9BAB9A] uppercase text-[10px] sm:text-[11px] font-black">Phone</p>
-                          <p className="font-semibold text-[#374151] truncate">{o.phone || '—'}</p>
+                          <p className="font-semibold text-[#374151] truncate">{formatPhone(o.phone)}</p>
                         </div>
                         <div className="min-w-0">
                           <p className="text-[#9BAB9A] uppercase text-[10px] sm:text-[11px] font-black">Total</p>
@@ -3432,12 +3540,12 @@ export default function Dashboard() {
                         <div className="flex gap-2 w-full sm:flex-1">
                         {role === 'admin' ? (
                           <select value={normalizeStatus(o.status)} onChange={e => void updateOrderStatus(o.id, e.target.value)}
-                            className={`min-h-[44px] flex-1 cursor-pointer rounded-xl border px-3 py-2 text-[12px] font-black outline-none ${normalizeStatus(o.status) === 'completed' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-amber-200 bg-amber-50 text-amber-700'}`}>
+                            className={`min-h-[40px] sm:min-h-[44px] flex-1 cursor-pointer rounded-xl border px-3 py-1.5 sm:py-2 text-[11px] sm:text-xs font-bold outline-none ${normalizeStatus(o.status) === 'completed' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-amber-200 bg-amber-50 text-amber-700'}`}>
                             <option value="pending">{l('Pending', 'நிலுவை')}</option>
                             <option value="completed">{l('Completed', 'முடிந்தது')}</option>
                           </select>
                         ) : (
-                          <span className={`inline-flex items-center justify-center flex-1 min-h-[44px] px-3 py-2 rounded-xl text-[12px] font-black uppercase ${normalizeStatus(o.status) === 'completed' ? 'border border-emerald-200 bg-emerald-50 text-emerald-700' : 'border border-amber-200 bg-amber-50 text-amber-700'}`}>
+                          <span className={`inline-flex items-center justify-center flex-1 min-h-[40px] sm:min-h-[44px] px-3 py-1.5 sm:py-2 rounded-xl text-[11px] sm:text-xs font-bold uppercase ${normalizeStatus(o.status) === 'completed' ? 'border border-emerald-200 bg-emerald-50 text-emerald-700' : 'border border-amber-200 bg-amber-50 text-amber-700'}`}>
                             {normalizeStatus(o.status) === 'completed' ? l('Completed', 'முடிந்தது') : l('Pending', 'நிலுவை')}
                           </span>
                         )}
@@ -3473,7 +3581,7 @@ export default function Dashboard() {
                         <tr key={o.id} className="hover:bg-[#F9FAFB] text-center">
                           <td className="whitespace-nowrap px-2 py-3 text-[11px] font-bold text-[#111111]">{formatInvoiceNo(o.invoice_no)}</td>
                           <td className="max-w-[100px] truncate px-2 py-3 text-[11px] font-semibold text-[#111111]">{o.customer_name}</td>
-                          <td className="whitespace-nowrap px-2 py-3 text-[11px] text-[#374151]">{o.phone}</td>
+                          <td className="whitespace-nowrap px-2 py-3 text-[11px] text-[#374151]">{formatPhone(o.phone)}</td>
                           <td className="px-2 py-3"><span className={`px-1.5 py-0.5 rounded-full text-[9px] font-black uppercase ${billTypeClass}`}>{billTypeLabel}</span></td>
                           <td className="px-2 py-3 text-[11px]">
                             {o.coupon_code ? <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700">{o.coupon_code}</span> : <span className="text-[#9BAB9A]">—</span>}
@@ -3604,18 +3712,18 @@ export default function Dashboard() {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="col-span-2">
                     <label className="block text-[11px] font-black uppercase text-[#6B7280] tracking-wider mb-1">{l('Product Name', 'பொருள் பெயர்')} *</label>
-                    <input required className="w-full px-4 py-2.5 bg-[#FAFAFA] border border-[#F3F4F6] focus:border-[#D4AF37] rounded-xl text-[13px] font-bold outline-none transition-colors"
+                    <input required className="w-full h-10 px-3.5 bg-[#FAFAFA] border border-[#F3F4F6] focus:border-[#D4AF37] rounded-xl text-xs sm:text-[13px] font-semibold text-gray-900 placeholder:text-gray-400 placeholder:font-normal outline-none transition-colors"
                       placeholder="e.g. Manjal Podi" value={prodForm.name} onChange={e => setProdForm(f => ({...f, name: e.target.value}))} />
                   </div>
                   <div className="col-span-2">
                     <label className="block text-[11px] font-black uppercase text-[#6B7280] tracking-wider mb-1">{l('Tamil Name', 'தமிழ் பெயர்')}</label>
-                    <input className="w-full px-4 py-2.5 bg-[#FAFAFA] border border-[#F3F4F6] focus:border-[#D4AF37] rounded-xl text-[13px] font-bold outline-none transition-colors"
+                    <input className="w-full h-10 px-3.5 bg-[#FAFAFA] border border-[#F3F4F6] focus:border-[#D4AF37] rounded-xl text-xs sm:text-[13px] font-semibold text-gray-900 placeholder:text-gray-400 placeholder:font-normal outline-none transition-colors"
                       placeholder="எ.கா. மஞ்சள் பொடி" value={prodForm.nameTa} onChange={e => setProdForm(f => ({...f, nameTa: e.target.value}))} />
                   </div>
                   <div>
                     <label className="block text-[11px] font-black uppercase text-[#6B7280] tracking-wider mb-1">{l('Price (INR)', 'விலை (INR)')} *</label>
                     <input required type="number" min="0" step="0.01"
-                      className="w-full px-4 py-2.5 bg-[#FAFAFA] border border-[#F3F4F6] focus:border-[#D4AF37] rounded-xl text-[13px] font-bold outline-none transition-colors"
+                      className="w-full h-10 px-3.5 bg-[#FAFAFA] border border-[#F3F4F6] focus:border-[#D4AF37] rounded-xl text-xs sm:text-[13px] font-semibold text-gray-900 outline-none transition-colors"
                       value={prodForm.price} onChange={e => setProdForm(f => ({...f, price: Number(e.target.value)}))} />
                     <p className="text-[11px] text-[#6B7280] mt-1">
                       {prodForm.unitType === 'weight' ? `Per ${prodForm.baseQuantity}g` : prodForm.unitType === 'volume' ? `Per ${prodForm.baseQuantity}ml` : 'Per piece/bundle'}
@@ -3624,37 +3732,37 @@ export default function Dashboard() {
                   <div>
                     <label className="block text-[11px] font-black uppercase text-[#6B7280] tracking-wider mb-1">{l('Purchase Price (INR)', 'வாங்கிய விலை')} *</label>
                     <input required type="number" min="0" step="0.01"
-                      className="w-full px-4 py-2.5 bg-[#FAFAFA] border border-[#F3F4F6] focus:border-[#D4AF37] rounded-xl text-[13px] font-bold outline-none transition-colors"
+                      className="w-full h-10 px-3.5 bg-[#FAFAFA] border border-[#F3F4F6] focus:border-[#D4AF37] rounded-xl text-xs sm:text-[13px] font-semibold text-gray-900 outline-none transition-colors"
                       value={prodForm.purchasePrice} onChange={e => setProdForm(f => ({...f, purchasePrice: Number(e.target.value)}))} />
                   </div>
                   <div>
                     <label className="block text-[11px] font-black uppercase text-[#6B7280] tracking-wider mb-1">{l('MRP (INR)', 'MRP (INR)')}</label>
                     <input type="number" min="0" step="0.01"
-                      className="w-full px-4 py-2.5 bg-[#FAFAFA] border border-[#F3F4F6] focus:border-[#D4AF37] rounded-xl text-[13px] font-bold outline-none transition-colors"
-                      placeholder="Maximum Retail Price"
+                      className="w-full h-10 px-3.5 bg-[#FAFAFA] border border-[#F3F4F6] focus:border-[#D4AF37] rounded-xl text-xs sm:text-[13px] font-semibold text-gray-900 placeholder:text-gray-400 placeholder:font-normal outline-none transition-colors"
+                      placeholder="0.00"
                       value={prodForm.mrp} onChange={e => setProdForm(f => ({...f, mrp: e.target.value}))} />
                   </div>
                   <div>
                     <label className="block text-[11px] font-black uppercase text-[#6B7280] tracking-wider mb-1">{l('Offer Price (INR)', 'சலுகை விலை')}</label>
                     <input type="number" min="0" step="0.01"
-                      className="w-full px-4 py-2.5 bg-[#FAFAFA] border border-[#F3F4F6] focus:border-[#D4AF37] rounded-xl text-[13px] font-bold outline-none transition-colors"
-                      placeholder="Leave blank for no discount"
+                      className="w-full h-10 px-3.5 bg-[#FAFAFA] border border-[#F3F4F6] focus:border-[#D4AF37] rounded-xl text-xs sm:text-[13px] font-semibold text-gray-900 placeholder:text-gray-400 placeholder:font-normal outline-none transition-colors"
+                      placeholder="Optional"
                       value={prodForm.offerPrice} onChange={e => setProdForm(f => ({...f, offerPrice: e.target.value}))} />
                   </div>
                   <div>
                     <label className="block text-[11px] font-black uppercase text-[#6B7280] tracking-wider mb-1">{l('SKU', 'SKU')}</label>
-                    <input className="w-full px-4 py-2.5 bg-[#FAFAFA] border border-[#F3F4F6] focus:border-[#D4AF37] rounded-xl text-[13px] font-bold outline-none transition-colors"
+                    <input className="w-full h-10 px-3.5 bg-[#FAFAFA] border border-[#F3F4F6] focus:border-[#D4AF37] rounded-xl text-xs sm:text-[13px] font-semibold text-gray-900 placeholder:text-gray-400 placeholder:font-normal outline-none transition-colors"
                       placeholder="e.g. MP-100G" value={prodForm.sku} onChange={e => setProdForm(f => ({...f, sku: e.target.value}))} />
                   </div>
                   <div>
                     <label className="block text-[11px] font-black uppercase text-[#6B7280] tracking-wider mb-1">{l('Barcode', 'பார்கோடு')}</label>
-                    <input className="w-full px-4 py-2.5 bg-[#FAFAFA] border border-[#F3F4F6] focus:border-[#D4AF37] rounded-xl text-[13px] font-bold outline-none transition-colors"
+                    <input className="w-full h-10 px-3.5 bg-[#FAFAFA] border border-[#F3F4F6] focus:border-[#D4AF37] rounded-xl text-xs sm:text-[13px] font-semibold text-gray-900 placeholder:text-gray-400 placeholder:font-normal outline-none transition-colors"
                       placeholder="e.g. 8998765432100" value={prodForm.barcode} onChange={e => setProdForm(f => ({...f, barcode: e.target.value}))} />
                   </div>
                   <div>
                     <label className="block text-[11px] font-black uppercase text-[#6B7280] tracking-wider mb-1">{l('Stock', 'இருப்பு')} *</label>
                     <input required type="number" min="0"
-                      className="w-full px-4 py-2.5 bg-[#FAFAFA] border border-[#F3F4F6] focus:border-[#D4AF37] rounded-xl text-[13px] font-bold outline-none transition-colors"
+                      className="w-full h-10 px-3.5 bg-[#FAFAFA] border border-[#F3F4F6] focus:border-[#D4AF37] rounded-xl text-xs sm:text-[13px] font-semibold text-gray-900 outline-none transition-colors"
                       value={prodForm.stockQuantity} onChange={e => setProdForm(f => ({...f, stockQuantity: Number(e.target.value)}))} />
                   </div>
                   <div className="col-span-2 sm:col-span-1">
@@ -3812,7 +3920,7 @@ export default function Dashboard() {
                       </tr>
                     </thead>
                     <tbody className="text-[14px] divide-y divide-[#F3F4F6] bg-white">
-                      {products.filter(p => !inventorySearch || p.name.toLowerCase().includes(inventorySearch.toLowerCase()) || p.tamilName?.toLowerCase().includes(inventorySearch.toLowerCase()) || p.category?.toLowerCase().includes(inventorySearch.toLowerCase())).map(p => (
+                      {products.filter(p => !debouncedInventorySearch || p.name.toLowerCase().includes(debouncedInventorySearch.toLowerCase()) || p.tamilName?.toLowerCase().includes(debouncedInventorySearch.toLowerCase()) || p.category?.toLowerCase().includes(debouncedInventorySearch.toLowerCase())).map(p => (
                         <tr key={p.id} className={`hover:bg-[#FAFAFA] transition-colors cursor-pointer ${!p.isActive ? 'opacity-60' : ''}`}>
                           <td className="px-6 py-4" onClick={() => handleEdit(p)}>
                             <div className="flex items-center gap-4">
@@ -3823,8 +3931,8 @@ export default function Dashboard() {
                                   onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
                               </div>
                               <div className="min-w-0">
-                                <p className="font-bold text-[#111111] truncate max-w-[200px]">{p.name}</p>
-                                <p className="text-[12px] text-[#6B7280] mt-0.5">{p.category}</p>
+                                <p className="font-bold text-[#111111] whitespace-normal [overflow-wrap:anywhere] [word-break:break-word]">{p.name}</p>
+                                <p className="text-[12px] text-[#6B7280] mt-0.5 whitespace-normal [overflow-wrap:anywhere] [word-break:break-word]">{p.category}</p>
                               </div>
                             </div>
                           </td>
@@ -3901,7 +4009,7 @@ export default function Dashboard() {
                       <div>
                         <label className="block text-[11px] font-black uppercase tracking-wider text-[#6B7280] mb-1">{l('Size Label', 'அளவு பட்டை')}</label>
                         <input
-                          className="w-full px-4 py-2.5 bg-white rounded-xl border border-[#D1D5DB] text-[13px] font-bold outline-none focus:border-[#D4AF37] transition-colors shadow-sm"
+                          className="w-full h-10 px-3.5 bg-white rounded-xl border border-[#D1D5DB] text-xs sm:text-[13px] font-semibold text-gray-900 placeholder:text-gray-400 placeholder:font-normal outline-none focus:border-[#D4AF37] transition-colors shadow-sm"
                           placeholder="25g / 250ml / 1 pack"
                           value={variantForm.sizeLabel}
                           onChange={e => setVariantForm(f => ({...f, sizeLabel: e.target.value}))} />
@@ -3909,7 +4017,7 @@ export default function Dashboard() {
                       <div>
                         <label className="block text-[11px] font-black uppercase tracking-wider text-[#6B7280] mb-1">{l('Purchase Price (INR)', 'வாங்கிய விலை')}</label>
                         <input type="number" min="0" step="0.01"
-                          className="w-full px-4 py-2.5 bg-white rounded-xl border border-[#D1D5DB] text-[13px] font-bold outline-none focus:border-[#D4AF37] transition-colors shadow-sm"
+                          className="w-full h-10 px-3.5 bg-white rounded-xl border border-[#D1D5DB] text-xs sm:text-[13px] font-semibold text-gray-900 placeholder:text-gray-400 placeholder:font-normal outline-none focus:border-[#D4AF37] transition-colors shadow-sm"
                           placeholder="30"
                           value={variantForm.purchasePrice}
                           onChange={e => setVariantForm(f => ({...f, purchasePrice: e.target.value}))} />
@@ -3917,7 +4025,7 @@ export default function Dashboard() {
                       <div>
                         <label className="block text-[11px] font-black uppercase tracking-wider text-[#6B7280] mb-1">{l('MRP (INR)', 'MRP (INR)')}</label>
                         <input type="number" min="0" step="0.01"
-                          className="w-full px-4 py-2.5 bg-white rounded-xl border border-[#D1D5DB] text-[13px] font-bold outline-none focus:border-[#D4AF37] transition-colors shadow-sm"
+                          className="w-full h-10 px-3.5 bg-white rounded-xl border border-[#D1D5DB] text-xs sm:text-[13px] font-semibold text-gray-900 placeholder:text-gray-400 placeholder:font-normal outline-none focus:border-[#D4AF37] transition-colors shadow-sm"
                           placeholder="50"
                           value={variantForm.mrp}
                           onChange={e => setVariantForm(f => ({...f, mrp: e.target.value}))} />
@@ -3925,21 +4033,21 @@ export default function Dashboard() {
                       <div>
                         <label className="block text-[11px] font-black uppercase tracking-wider text-[#6B7280] mb-1">{l('Selling Price (INR) *', 'விற்பனை விலை *')}</label>
                         <input required type="number" min="0" step="0.01"
-                          className="w-full px-4 py-2.5 bg-white rounded-xl border border-[#D1D5DB] text-[13px] font-bold outline-none focus:border-[#D4AF37] transition-colors shadow-sm"
+                          className="w-full h-10 px-3.5 bg-white rounded-xl border border-[#D1D5DB] text-xs sm:text-[13px] font-semibold text-gray-900 placeholder:text-gray-400 placeholder:font-normal outline-none focus:border-[#D4AF37] transition-colors shadow-sm"
                           placeholder="40"
                           value={variantForm.price}
                           onChange={e => setVariantForm(f => ({...f, price: e.target.value}))} />
                       </div>
                       <div>
                         <label className="block text-[11px] font-black uppercase tracking-wider text-[#6B7280] mb-1">{l('SKU', 'SKU')}</label>
-                        <input className="w-full px-4 py-2.5 bg-white rounded-xl border border-[#D1D5DB] text-[13px] font-bold outline-none focus:border-[#D4AF37] transition-colors shadow-sm"
+                        <input className="w-full h-10 px-3.5 bg-white rounded-xl border border-[#D1D5DB] text-xs sm:text-[13px] font-semibold text-gray-900 placeholder:text-gray-400 placeholder:font-normal outline-none focus:border-[#D4AF37] transition-colors shadow-sm"
                           placeholder="SKU-123"
                           value={variantForm.sku}
                           onChange={e => setVariantForm(f => ({...f, sku: e.target.value}))} />
                       </div>
                       <div>
                         <label className="block text-[11px] font-black uppercase tracking-wider text-[#6B7280] mb-1">{l('Barcode', 'பார்கோடு')}</label>
-                        <input className="w-full px-4 py-2.5 bg-white rounded-xl border border-[#D1D5DB] text-[13px] font-bold outline-none focus:border-[#D4AF37] transition-colors shadow-sm"
+                        <input className="w-full h-10 px-3.5 bg-white rounded-xl border border-[#D1D5DB] text-xs sm:text-[13px] font-semibold text-gray-900 placeholder:text-gray-400 placeholder:font-normal outline-none focus:border-[#D4AF37] transition-colors shadow-sm"
                           placeholder="890..."
                           value={variantForm.barcode}
                           onChange={e => setVariantForm(f => ({...f, barcode: e.target.value}))} />
@@ -3947,7 +4055,7 @@ export default function Dashboard() {
                       <div>
                         <label className="block text-[11px] font-black uppercase tracking-wider text-[#6B7280] mb-1">{l('Stock *', 'இருப்பு *')}</label>
                         <input required type="number" min="0"
-                          className="w-full px-4 py-2.5 bg-white rounded-xl border border-[#D1D5DB] text-[13px] font-bold outline-none focus:border-[#D4AF37] transition-colors shadow-sm"
+                          className="w-full h-10 px-3.5 bg-white rounded-xl border border-[#D1D5DB] text-xs sm:text-[13px] font-semibold text-gray-900 placeholder:text-gray-400 placeholder:font-normal outline-none focus:border-[#D4AF37] transition-colors shadow-sm"
                           placeholder="50"
                           value={variantForm.stock}
                           onChange={e => setVariantForm(f => ({...f, stock: e.target.value}))} />
@@ -3955,7 +4063,7 @@ export default function Dashboard() {
                       <div>
                         <label className="block text-[11px] font-black uppercase tracking-wider text-[#6B7280] mb-1">{l('Weight/Vol Value', 'எடை மதிப்பு')}</label>
                         <input type="number" min="0" step="0.001"
-                          className="w-full px-4 py-2.5 bg-white rounded-xl border border-[#D1D5DB] text-[13px] font-bold outline-none focus:border-[#D4AF37] transition-colors shadow-sm"
+                          className="w-full h-10 px-3.5 bg-white rounded-xl border border-[#D1D5DB] text-xs sm:text-[13px] font-semibold text-gray-900 placeholder:text-gray-400 placeholder:font-normal outline-none focus:border-[#D4AF37] transition-colors shadow-sm"
                           placeholder="250"
                           value={variantForm.weightValue}
                           onChange={e => setVariantForm(f => ({...f, weightValue: e.target.value}))} />
@@ -4017,7 +4125,7 @@ export default function Dashboard() {
                                 <span className="w-5 h-5 rounded-full bg-[#0A0A0A] text-white text-[10px] font-black flex items-center justify-center shrink-0">★</span>
                               )}
                               <div className="min-w-0">
-                                <p className="text-[14px] font-bold text-[#111111] truncate">{v.variantName}</p>
+                                <p className="text-[14px] font-bold text-[#111111] whitespace-normal [overflow-wrap:anywhere] [word-break:break-word]">{v.variantName}</p>
                                 <p className="text-[12px] text-[#6B7280] mt-0.5">
                                   <span className="font-bold text-[#111111]">{formatCurrency(v.price)}</span>{v.sizeLabel ? ` · ${v.sizeLabel}` : ''} · {l('Stock', 'இருப்பு')}: <span className="font-bold">{v.stock}</span>
                                 </p>
@@ -4180,7 +4288,7 @@ export default function Dashboard() {
                       </label>
                       <div className="flex gap-2">
                         <input
-                          className="flex-1 rounded-xl border border-gray-300 bg-[#FAFAFA] px-3.5 py-2.5 text-[13px] font-mono font-black uppercase tracking-wider text-[#111111] outline-none transition-all focus:border-[#0A0A0A] focus:bg-white focus:ring-1 focus:ring-[#0A0A0A] disabled:opacity-60"
+                          className="flex-1 rounded-xl border border-gray-300 bg-[#FAFAFA] px-3.5 py-2.5 text-xs sm:text-[13px] font-mono font-semibold uppercase tracking-wider text-[#111111] placeholder:text-gray-400 placeholder:font-normal placeholder:tracking-normal outline-none transition-all focus:border-[#0A0A0A] focus:bg-white focus:ring-1 focus:ring-[#0A0A0A] disabled:opacity-60"
                           placeholder="WELCOME10"
                           value={couponForm.code}
                           disabled={editingCouponId !== null}
@@ -4190,7 +4298,7 @@ export default function Dashboard() {
                           <button
                             type="button"
                             onClick={generateCouponCode}
-                            className="inline-flex items-center gap-1.5 shrink-0 rounded-xl bg-[#0A0A0A] border border-[#D4AF37] text-[#D4AF37] px-4 py-2.5 text-xs font-black uppercase tracking-wider hover:bg-[#1A1A1A] shadow-xs transition-all cursor-pointer hover:scale-[1.02]"
+                            className="inline-flex items-center gap-1.5 shrink-0 rounded-xl bg-[#0A0A0A] border border-[#D4AF37] text-[#D4AF37] px-3.5 sm:px-4 py-2.5 text-xs font-bold uppercase tracking-wider hover:bg-[#1A1A1A] shadow-xs transition-all cursor-pointer hover:scale-[1.02]"
                           >
                             <Sparkles size={13} className="text-[#D4AF37]" />
                             <span>Generate</span>
@@ -4212,7 +4320,7 @@ export default function Dashboard() {
                           type="number"
                           min="1"
                           max="100"
-                          className="w-full rounded-xl border border-gray-300 bg-[#FAFAFA] px-3.5 py-2.5 text-[13px] font-bold text-[#111111] outline-none transition-all focus:border-[#0A0A0A] focus:bg-white focus:ring-1 focus:ring-[#0A0A0A]"
+                          className="w-full rounded-xl border border-gray-300 bg-[#FAFAFA] px-3.5 py-2.5 text-xs sm:text-[13px] font-semibold text-[#111111] placeholder:text-gray-400 placeholder:font-normal outline-none transition-all focus:border-[#0A0A0A] focus:bg-white focus:ring-1 focus:ring-[#0A0A0A]"
                           placeholder="10"
                           value={couponForm.percentage}
                           onChange={e => setCouponForm(f => ({ ...f, percentage: Number(e.target.value) }))}
@@ -4225,7 +4333,7 @@ export default function Dashboard() {
                         <input
                           type="number"
                           min="0"
-                          className="w-full rounded-xl border border-gray-300 bg-[#FAFAFA] px-3.5 py-2.5 text-[13px] font-bold text-[#111111] outline-none transition-all focus:border-[#0A0A0A] focus:bg-white focus:ring-1 focus:ring-[#0A0A0A]"
+                          className="w-full rounded-xl border border-gray-300 bg-[#FAFAFA] px-3.5 py-2.5 text-xs sm:text-[13px] font-semibold text-[#111111] placeholder:text-gray-400 placeholder:font-normal outline-none transition-all focus:border-[#0A0A0A] focus:bg-white focus:ring-1 focus:ring-[#0A0A0A]"
                           placeholder="0 = no minimum"
                           value={couponForm.min_order_value}
                           onChange={e => setCouponForm(f => ({ ...f, min_order_value: e.target.value }))}
@@ -4241,7 +4349,7 @@ export default function Dashboard() {
                         </label>
                         <input
                           type="date"
-                          className="w-full rounded-xl border border-gray-300 bg-[#FAFAFA] px-3.5 py-2.5 text-[13px] font-bold text-[#111111] outline-none transition-all focus:border-[#0A0A0A] focus:bg-white focus:ring-1 focus:ring-[#0A0A0A]"
+                          className="w-full rounded-xl border border-gray-300 bg-[#FAFAFA] px-3.5 py-2.5 text-xs sm:text-[13px] font-semibold text-[#111111] outline-none transition-all focus:border-[#0A0A0A] focus:bg-white focus:ring-1 focus:ring-[#0A0A0A]"
                           value={couponForm.expiry_date}
                           onChange={e => setCouponForm(f => ({ ...f, expiry_date: e.target.value }))}
                         />
@@ -4253,7 +4361,7 @@ export default function Dashboard() {
                         <input
                           type="number"
                           min="1"
-                          className="w-full rounded-xl border border-gray-300 bg-[#FAFAFA] px-3.5 py-2.5 text-[13px] font-bold text-[#111111] outline-none transition-all focus:border-[#0A0A0A] focus:bg-white focus:ring-1 focus:ring-[#0A0A0A]"
+                          className="w-full rounded-xl border border-gray-300 bg-[#FAFAFA] px-3.5 py-2.5 text-xs sm:text-[13px] font-semibold text-[#111111] placeholder:text-gray-400 placeholder:font-normal outline-none transition-all focus:border-[#0A0A0A] focus:bg-white focus:ring-1 focus:ring-[#0A0A0A]"
                           placeholder="Unlimited"
                           value={couponForm.usage_limit}
                           onChange={e => setCouponForm(f => ({ ...f, usage_limit: e.target.value }))}
@@ -4425,8 +4533,8 @@ export default function Dashboard() {
                     <tbody className="divide-y divide-[#F3F4F6]">
                       {allUsers
                         .filter(u => {
-                          if (!userSearch.trim()) return true
-                          const q = userSearch.toLowerCase()
+                          if (!debouncedUserSearch.trim()) return true
+                          const q = debouncedUserSearch.toLowerCase()
                           return u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q)
                         })
                         .map(u => (
@@ -4499,7 +4607,7 @@ export default function Dashboard() {
 
         return (
           <div
-            className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-3 sm:p-6"
+            className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-3 sm:p-6 print:static print:p-0 print:bg-white print:block print:inset-auto"
             role="dialog"
             aria-modal="true"
             aria-label={`Invoice ${invoicePreviewOrder.invoice_no || invoicePreviewOrder.id}`}
@@ -4507,8 +4615,8 @@ export default function Dashboard() {
               if (event.target === event.currentTarget) setInvoicePreviewOrder(null)
             }}
           >
-            <div className="flex max-h-[95vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl bg-[#F9FAFB] shadow-2xl">
-              <div className="flex shrink-0 items-center justify-between border-b border-[#E5E7EB]/60 bg-white px-4 py-3 sm:px-6">
+            <div className="flex max-h-[95vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl bg-[#F9FAFB] shadow-2xl print:max-h-none print:shadow-none print:rounded-none print:bg-white print:w-full print:max-w-full print:overflow-visible">
+              <div className="flex shrink-0 items-center justify-between border-b border-[#E5E7EB]/60 bg-white px-4 py-3 sm:px-6 print:hidden">
                 <div>
                   <h2 className="text-base font-black text-[#111111]">Invoice Preview</h2>
                   <p className="text-xs font-semibold text-[#6B7280]">{formatInvoiceNo(invoicePreviewOrder.invoice_no || invoicePreviewOrder.id)}</p>
@@ -4538,8 +4646,8 @@ export default function Dashboard() {
                   </button>
                 </div>
               </div>
-              <div className="overflow-y-auto p-2 sm:p-5">
-                <div className="mx-auto max-w-3xl overflow-hidden rounded-xl bg-white shadow-sm">
+              <div className="overflow-y-auto p-2 sm:p-5 print:p-0 print:overflow-visible print:max-h-none">
+                <div className="mx-auto max-w-3xl overflow-hidden rounded-xl bg-white shadow-sm print:shadow-none print:rounded-none print:max-w-full print:m-0 print:p-0 print:overflow-visible">
                   <Invoice
                     invoiceNo={formatInvoiceNo(invoicePreviewOrder.invoice_no || invoicePreviewOrder.id)}
                     date={invoicePreviewOrder.created_at}

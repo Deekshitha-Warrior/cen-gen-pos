@@ -190,7 +190,7 @@ export default function Checkout() {
       const waText = buildWhatsAppMessage(snapshot, itemsSnapshot)
       clear()
       setBooked(snapshot)
-      window.open(`${BRAND_WHATSAPP_LINK}?text=${waText}`, '_blank')
+      window.location.href = `${BRAND_WHATSAPP_LINK}?text=${waText}`
     } catch (err: unknown) {
       const msg = err instanceof Error
         ? err.message
@@ -433,7 +433,7 @@ export default function Checkout() {
                         className="w-full h-full object-cover" />
                     </div>
                     <div className="flex-grow min-w-0">
-                      <p className="font-bold text-sm text-textMain truncate">{pName}</p>
+                      <p className="font-bold text-sm text-textMain whitespace-normal [overflow-wrap:anywhere] [word-break:break-word]">{pName}</p>
                       <p className="text-xs text-textMuted">{formatQuantityDisplay(item.qty, item.selectedUnit, item.unitType)}</p>
                     </div>
                     <p className="font-bold text-sm text-textMain shrink-0">{formatCurrency(item.lineTotal)}</p>

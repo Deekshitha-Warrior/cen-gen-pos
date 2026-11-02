@@ -23,12 +23,18 @@ import {
   fetchRemoteCustomSizes,
   renderBarcodeSvg,
   generateBarcodeSvgString,
+  generateThermalBarcodeSvg,
+  getBarcodeModuleWidth,
+  normalizeBarcode,
 } from '../../lib/barcode'
 import { BRAND_EN } from '../../lib/brand'
 import { barcodeService } from '../../services/barcodeService'
 import { fetchVariantsByProduct, type ProductVariant } from '../../services/variantService'
+import { useVisualViewportHeight } from '../../hooks/useVisualViewportHeight'
 import { BarcodeSettingsDrawer } from './BarcodeSettingsDrawer'
 import { BarcodeSheetPreviewModal } from './BarcodeSheetPreviewModal'
+import { useProductStore } from '../../store/store'
+import { lockScroll, unlockScroll } from '../../lib/scrollLock'
 
 interface ProductOption {
   id: number
@@ -78,12 +84,12 @@ export const CreateBarcodeModal: React.FC<CreateBarcodeModalProps> = ({
   // Prevent background scrolling when modal is open
   useEffect(() => {
     if (isOpen) {
-      document.body.style.overflow = 'hidden'
+      lockScroll()
     } else {
-      document.body.style.overflow = ''
+      unlockScroll()
     }
     return () => {
-      document.body.style.overflow = ''
+      unlockScroll()
     }
   }, [isOpen])
 
@@ -109,6 +115,7 @@ export const CreateBarcodeModal: React.FC<CreateBarcodeModalProps> = ({
   // Submission & Status
   const [generating, setGenerating] = useState(false)
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  const [updateStock, setUpdateStock] = useState<boolean>(false)
 
   // Preview SVG Ref
   const previewSvgRef = useRef<SVGSVGElement>(null)
@@ -291,7 +298,7 @@ export const CreateBarcodeModal: React.FC<CreateBarcodeModalProps> = ({
       productName: selectedProduct.name,
       variantId: selectedVariant?.id || null,
       variantName: selectedVariant?.variantName || undefined,
-      barcodeValue: itemCode.trim(),
+      barcodeValue: normalizeBarcode(itemCode),
       price: selectedVariant?.price || selectedProduct.price,
       costPrice: selectedProduct.cost_price || 0,
       noOfLabels: finalLabels,
@@ -348,23 +355,30 @@ export const CreateBarcodeModal: React.FC<CreateBarcodeModalProps> = ({
         await barcodeService.receiveStockWithBarcode({
           product_id: item.productId,
           variant_id: item.variantId || null,
-          quantity_received: item.noOfLabels,
+          quantity_received: updateStock ? item.noOfLabels : 0,
           unit_cost: item.costPrice || null,
-          custom_barcode: item.barcodeValue,
-          note: `Received via Barcode Generator (${item.noOfLabels} labels)`,
+          custom_barcode: normalizeBarcode(item.barcodeValue),
+          note: updateStock
+            ? `Received via Barcode Generator (${item.noOfLabels} labels)`
+            : `Barcode Tagging (${item.noOfLabels} labels)`,
           created_by_name: 'Admin',
         })
       }
 
       setStatusMessage({
         type: 'success',
-        text: `Successfully generated barcodes & added stock for ${selectedItems.length} items (${totalLabelsNeeded} total units)!`,
+        text: updateStock
+          ? `Successfully generated barcodes & added stock for ${selectedItems.length} items (${totalLabelsNeeded} total units)!`
+          : `Successfully generated barcodes for ${selectedItems.length} items (${totalLabelsNeeded} labels ready)!`,
       })
+
+      // Refresh product store so changes reflect across the app
+      await useProductStore.getState().fetchProducts(true)
 
       onSuccess?.()
       setShowSheetPreviewModal(true)
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Failed to receive stock with barcodes'
+      const msg = err instanceof Error ? err.message : 'Failed to generate barcodes'
       setStatusMessage({ type: 'error', text: msg })
     } finally {
       setGenerating(false)
@@ -380,6 +394,43 @@ export const CreateBarcodeModal: React.FC<CreateBarcodeModalProps> = ({
   const printQueueDirectly = () => {
     const selectedItems = queue.filter((it) => it.selected)
     if (selectedItems.length === 0) return
+
+    const isThermal = settings.printerType === 'label'
+    const isSmall = currentSizeConfig.heightMm <= 25
+    const barcodeHeightPx = Math.max(16, Math.round(currentSizeConfig.heightMm * 0.32 * 3.7795))
+    const barcodeFontSize = Math.max(6, Math.min(9.5, Math.round(currentSizeConfig.heightMm * 0.20 * 10) / 10))
+    const barcodeAvailableWidthMm = (currentSizeConfig.widthMm - (isSmall ? 4 : 3.2)) * 0.97
+    const barcodeWidths = new Map<string, number>()
+    if (!isThermal) {
+      for (const item of selectedItems) {
+        const moduleWidth = getBarcodeModuleWidth(item.barcodeValue, barcodeAvailableWidthMm, {
+          height: barcodeHeightPx,
+          fontSize: barcodeFontSize,
+          font: 'Arial, sans-serif',
+          margin: 0,
+          marginLeft: 10,
+          marginRight: 10,
+          textMargin: 1.5,
+          displayValue: true,
+        })
+        if (moduleWidth === null) {
+          alert(`Barcode "${item.barcodeValue}" is too dense for the selected sticker size. Choose a wider label or use a shorter barcode.`)
+          return
+        }
+        barcodeWidths.set(item.barcodeValue, moduleWidth)
+      }
+    }
+    const thermalBarcodes = new Map<string, string>()
+    if (isThermal) {
+      for (const item of selectedItems) {
+        const svg = generateThermalBarcodeSvg(item.barcodeValue, currentSizeConfig.widthMm - 3.4)
+        if (!svg) {
+          alert(`Barcode "${item.barcodeValue}" is too long for the selected sticker size. Choose a wider label or use a shorter barcode.`)
+          return
+        }
+        thermalBarcodes.set(item.barcodeValue, svg)
+      }
+    }
 
     try {
       // Build printable HTML sheet for thermal / regular printer
@@ -399,46 +450,43 @@ export const CreateBarcodeModal: React.FC<CreateBarcodeModalProps> = ({
         return
       }
 
-    const isThermal = settings.printerType === 'label'
-    const isSmall = currentSizeConfig.heightMm <= 25
     const isLarge = currentSizeConfig.heightMm >= 40
 
-    // Proportional barcode sizing preventing detail overlaps
-    const barcodeHeightPx = Math.max(16, Math.round(currentSizeConfig.heightMm * 0.32 * 3.7795))
-    const printableWidthPx = Math.max(30, (currentSizeConfig.widthMm - 4) * 3.7795)
-    const barcodeBarWidth = Math.max(0.80, Math.min(1.70, Math.round((printableWidthPx / 120) * 100) / 100))
-    const barcodeFontSize = Math.max(6, Math.min(9.5, Math.round(currentSizeConfig.heightMm * 0.20 * 10) / 10))
-
     const headerFontSize = isSmall ? '7pt' : isLarge ? '10.5pt' : '8.5pt'
-    const titleFontSize = isSmall ? '6pt' : isLarge ? '9pt' : '7.5pt'
     const tagFontSize = isSmall ? '5.5pt' : isLarge ? '8.5pt' : '7pt'
     const priceFontSize = isSmall ? '8pt' : isLarge ? '12pt' : '9.5pt'
-    const stickerPadding = isSmall ? '0.6mm 1.2mm' : '1.0mm 1.6mm'
+    const stickerPadding = isThermal
+      // Roll printers can't print the outer ~1.3 mm of the roll, so keep content clear of the label edges
+      ? (isSmall ? '2.4mm 2mm' : '2.4mm 2.4mm')
+      : (isSmall ? '0.8mm 2mm' : '1.0mm 1.6mm')
 
     // Generate individual sticker cards HTML with pre-rendered SVGs
     const allStickers: string[] = []
     selectedItems.forEach((item) => {
       const count = Math.max(1, item.noOfLabels)
       const fullTitle = `${item.productName}${item.variantName ? ` (${item.variantName})` : ''}`
-      const svgMarkup = generateBarcodeSvgString(item.barcodeValue, {
-        width: barcodeBarWidth,
+      const svgMarkup = isThermal ? '' : generateBarcodeSvgString(item.barcodeValue, {
+        width: barcodeWidths.get(item.barcodeValue) ?? undefined,
         height: barcodeHeightPx,
         fontSize: barcodeFontSize,
         font: 'Arial, sans-serif',
         margin: 0,
+        marginLeft: 10,
+        marginRight: 10,
+        marginBottom: 2,
         textMargin: 1.5,
         displayValue: true,
       })
+      const thermalSvg = thermalBarcodes.get(item.barcodeValue) || ''
       for (let i = 0; i < count; i++) {
         allStickers.push(`
           <div class="label-sticker">
             ${settings.showCompanyName ? `<div class="header">${item.header || BRAND_EN}</div>` : ''}
-            ${settings.showItemName ? `<div class="prod-title">${fullTitle}</div>` : ''}
-            <div class="barcode-box">
-              ${svgMarkup}
-            </div>
+            ${isThermal
+              ? `<div class="barcode-box thermal">${thermalSvg}<div class="bc-text">${item.barcodeValue}</div></div>`
+              : `<div class="barcode-box">${svgMarkup}</div>`}
             <div class="footer">
-              <span>${item.line2 ? `<span class="tag">${item.line2}</span>` : '<span class="tag">CLAD RETAIL</span>'}</span>
+              <span class="product-name">${settings.showItemName ? fullTitle : item.line2 || ''}</span>
               ${settings.showSalePrice ? `<span class="price">₹${item.price}</span>` : ''}
             </div>
           </div>
@@ -446,17 +494,38 @@ export const CreateBarcodeModal: React.FC<CreateBarcodeModalProps> = ({
       }
     })
 
+    // Group stickers into rows of `labelsPerRow` so 2-up (or 3-up) roll presets place
+    // labels side-by-side instead of forcing a new page after every single sticker.
+    const labelsPerRow = Math.max(1, currentSizeConfig.labelsPerRow || 1)
+    const gapMm = currentSizeConfig.horizontalGapMm || 0
+    const rowWidthMm = currentSizeConfig.widthMm * labelsPerRow + gapMm * (labelsPerRow - 1)
+    // Page = full roll width; the label row is centred so the bare liner edges stay blank
+    const pageWidthMm = Math.max(rowWidthMm, currentSizeConfig.rollWidthMm || 0)
+    const sideMarginMm = (pageWidthMm - rowWidthMm) / 2
+    const rowGapMm = Math.max(0, Number(settings.rowGapMm) || 0)
+    const offsetXMm = Number(settings.offsetXMm) || 0
+    const offsetYMm = Number(settings.offsetYMm) || 0
+    // Equal space above and below, so a printer that places the print 1-2 mm early or late
+    // (in either print orientation) never cuts the top or bottom line. Offset Y (Settings)
+    // moves the whole content down (+) or up (-) inside the label; the barcode bars absorb it.
+    const thermalTopPadMm = Math.max(0.3, Math.min(5, 2.4 + offsetYMm))
+    const thermalBottomPadMm = Math.max(0.3, Math.min(5, 2.4 - offsetYMm))
+    const pageHeightMm = currentSizeConfig.heightMm + rowGapMm
+
     let bodyContent = ''
     if (isThermal) {
-      // 1 barcode per page for thermal roll printing
-      bodyContent = allStickers.join('')
+      let rowsHtml = ''
+      // Each .label-row is one print page with exactly `labelsPerRow` labels;
+      // the last row is padded with blank labels so the columns never shift.
+      for (let i = 0; i < allStickers.length; i += labelsPerRow) {
+        const row = allStickers.slice(i, i + labelsPerRow)
+        while (row.length < labelsPerRow) row.push('<div class="label-sticker blank"></div>')
+        rowsHtml += `<div class="label-row">${row.join('')}</div>`
+      }
+      bodyContent = rowsHtml
     } else {
-      // Regular A4 printer container
-      bodyContent = `
-        <div class="a4-container">
-          ${allStickers.join('')}
-        </div>
-      `
+      // Regular A4 printer — flat grid, no row wrappers needed (CSS grid handles columns)
+      bodyContent = `<div class="a4-container">${allStickers.join('')}</div>`
     }
 
     doc.open()
@@ -466,12 +535,12 @@ export const CreateBarcodeModal: React.FC<CreateBarcodeModalProps> = ({
         <head>
           <title>CLAD Barcode Labels</title>
           <style>
-            @page {
-              ${
-                isThermal
-                  ? `size: ${currentSizeConfig.widthMm}mm ${currentSizeConfig.heightMm}mm; margin: 0mm !important; marks: none !important;`
-                  : `size: A4 portrait; margin: 10mm !important;`
-              }
+            ${
+              isThermal
+                ? `@media print {
+              @page { size: ${pageWidthMm}mm ${pageHeightMm}mm; margin: 0; }
+            }`
+                : `@page { size: A4 portrait; margin: 0mm !important; }`
             }
             * {
               box-sizing: border-box;
@@ -486,11 +555,52 @@ export const CreateBarcodeModal: React.FC<CreateBarcodeModalProps> = ({
               -webkit-print-color-adjust: exact;
               print-color-adjust: exact;
             }
+            ${
+              isThermal
+                ? `
+            .label-row {
+              width: ${pageWidthMm}mm;
+              padding: 0 ${sideMarginMm}mm;
+              height: ${pageHeightMm}mm;
+              display: grid;
+              grid-template-columns: repeat(${labelsPerRow}, 1fr);
+              grid-template-rows: ${currentSizeConfig.heightMm}mm;
+              column-gap: ${gapMm}mm;
+              break-after: page;
+              page-break-after: always;
+              overflow: hidden;
+              ${offsetXMm !== 0 ? `position: relative; left: ${offsetXMm}mm;` : ''}
+            }
+            .label-row:last-child {
+              break-after: auto;
+              page-break-after: auto;
+            }
+            .label-row .label-sticker {
+              padding-top: ${thermalTopPadMm}mm;
+              padding-bottom: ${thermalBottomPadMm}mm;
+              width: auto !important;
+              max-width: none !important;
+              min-width: 0;
+              height: ${currentSizeConfig.heightMm}mm !important;
+              overflow: hidden;
+            }`
+                : ''
+            }
             .a4-container {
-              display: flex;
-              flex-wrap: wrap;
-              align-content: flex-start;
-              gap: 3mm 4mm;
+              width: 210mm;
+              padding: 5mm;
+              display: grid;
+              grid-template-columns: repeat(${labelsPerRow}, ${currentSizeConfig.widthMm}mm);
+              grid-auto-rows: ${currentSizeConfig.heightMm}mm;
+              column-gap: ${gapMm}mm;
+              row-gap: ${currentSizeConfig.horizontalGapMm || gapMm}mm;
+            }
+            .a4-container .label-sticker:nth-child(${labelsPerRow}n + 1) > * {
+              position: relative;
+              left: 1.5mm;
+            }
+            .a4-container .label-sticker:nth-child(${labelsPerRow}n + 1) .barcode-box {
+              overflow: visible;
             }
             .label-sticker {
               width: ${currentSizeConfig.widthMm}mm !important;
@@ -510,9 +620,6 @@ export const CreateBarcodeModal: React.FC<CreateBarcodeModalProps> = ({
               background: #fff;
               ${!isThermal ? 'border: 0.2mm dashed #bbb;' : ''}
             }
-            .label-sticker + .label-sticker {
-              ${isThermal ? 'break-before: page !important; page-break-before: always !important;' : ''}
-            }
             .header {
               font-size: ${headerFontSize};
               font-weight: 900;
@@ -521,17 +628,6 @@ export const CreateBarcodeModal: React.FC<CreateBarcodeModalProps> = ({
               line-height: 1.1;
               color: #000;
               flex-shrink: 0;
-            }
-            .prod-title {
-              font-size: ${titleFontSize};
-              font-weight: 700;
-              white-space: nowrap;
-              overflow: hidden;
-              text-overflow: ellipsis;
-              max-width: 98%;
-              margin-top: 0.3mm;
-              color: #111;
-              line-height: 1.1;
             }
             .barcode-box {
               width: 100%;
@@ -551,26 +647,41 @@ export const CreateBarcodeModal: React.FC<CreateBarcodeModalProps> = ({
               width: auto;
               height: auto;
             }
+            .barcode-box.thermal { flex-direction: column; justify-content: center; width: calc(100% + 1.2mm); margin-left: -0.6mm; margin-right: -0.6mm; }
+            .barcode-box svg.bc-bars { flex: 1 1 0; min-height: 0; height: auto; max-width: none; max-height: none; }
+            .bc-text { font-size: 5.5pt; line-height: 1; letter-spacing: 0.2px; margin-top: 0.3mm; color: #000; font-weight: 700; flex-shrink: 0; }
             .footer {
               width: 100%;
               display: flex;
               justify-content: space-between;
               align-items: center;
+              gap: 1mm;
               border-top: 0.6pt solid #000;
               padding-top: 0.5mm;
               line-height: 1;
               flex-shrink: 0;
+              font-size: ${tagFontSize};
+            }
+            .product-name {
+              flex: 1;
+              min-width: 0;
+              overflow: hidden;
+              text-overflow: ellipsis;
+              white-space: nowrap;
+              text-align: left;
+              font-size: ${tagFontSize};
             }
             .tag {
               font-size: ${tagFontSize};
               font-weight: 700;
-              color: #444;
+              color: #000;
             }
             .price {
               font-size: ${priceFontSize};
               font-weight: 900;
               color: #000;
             }
+            .header *, .product-name, .bc-text, .footer *, .price, .mrp, .retail-tag { font-weight: 900 !important; -webkit-text-stroke: 0.25pt #000; color: #000 !important; }
           </style>
         </head>
         <body data-gramm="false">
@@ -608,13 +719,27 @@ export const CreateBarcodeModal: React.FC<CreateBarcodeModalProps> = ({
   }
 }
 
+  const vvh = useVisualViewportHeight()
+  const modalHeightVar = vvh ? ({ '--modal-vvh': `${vvh}px` } as React.CSSProperties) : undefined
+
   if (!isOpen) return null
+
+  const overlayStyle: React.CSSProperties = {
+    ...(modalHeightVar ?? {}),
+    height: vvh ? `${vvh}px` : '100dvh',
+  }
 
   return createPortal(
     <>
-      <div className="fixed inset-0 top-0 left-0 right-0 bottom-0 w-screen h-screen h-[100dvh] z-[9999] flex items-center justify-center bg-black/75 backdrop-blur-sm p-0 sm:p-4 overflow-hidden animate-in fade-in duration-150">
+      <div
+        className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/75 backdrop-blur-sm p-0 sm:p-4 overflow-hidden animate-in fade-in duration-150"
+        style={overlayStyle}
+      >
         <div className="absolute inset-0" onClick={onClose} />
-        <div className="relative z-10 bg-white w-full max-w-6xl h-screen h-[100dvh] sm:h-auto sm:max-h-[94vh] rounded-none sm:rounded-3xl border-0 sm:border border-gray-200 shadow-2xl overflow-hidden flex flex-col">
+        <div
+          className="relative z-10 bg-white w-full max-w-6xl sm:h-auto sm:max-h-[94dvh] rounded-none sm:rounded-3xl border-0 sm:border border-gray-200 shadow-2xl overflow-hidden flex flex-col"
+          style={{ height: typeof window !== 'undefined' && window.innerWidth < 640 ? (vvh ? `${vvh}px` : '100dvh') : undefined }}
+        >
           {/* TOP BAR matching Screenshot 195106 */}
           <div className="flex items-center justify-between px-4 py-3.5 sm:px-6 sm:py-4 border-b border-gray-200 bg-[#0A0A0A] text-white shrink-0">
             <div className="flex items-center gap-2">
@@ -1264,16 +1389,29 @@ export const CreateBarcodeModal: React.FC<CreateBarcodeModalProps> = ({
           </div>
 
           {/* MODAL FOOTER matching Screenshot 195637 */}
-          <div className="px-3 py-2.5 sm:px-6 sm:py-4 border-t border-gray-200 bg-white flex items-center justify-between shrink-0 gap-2 pb-[calc(env(safe-area-inset-bottom)+0.75rem)]">
+          <div
+            className="px-3 py-2.5 sm:px-6 sm:py-4 border-t border-gray-200 bg-white flex flex-wrap sm:flex-nowrap items-center justify-between shrink-0 sticky bottom-0 z-20 gap-2"
+            style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
+          >
             <button
               type="button"
               onClick={onClose}
-              className="px-3.5 py-2 sm:px-5 sm:py-2.5 rounded-xl border border-gray-300 text-xs font-bold text-gray-700 hover:bg-gray-100 transition-colors cursor-pointer shrink-0"
+              className="px-3.5 py-2 sm:px-5 sm:py-2.5 rounded-xl border border-gray-300 text-xs font-bold text-gray-700 hover:bg-gray-100 transition-colors cursor-pointer shrink-0 min-h-[44px] sm:min-h-0 flex items-center justify-center"
             >
               Close
             </button>
 
             <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+              <label className="flex items-center gap-1.5 text-xs font-bold text-gray-700 cursor-pointer select-none bg-gray-50 border border-gray-200 px-2.5 py-1.5 rounded-lg hover:bg-gray-100 transition-colors">
+                <input
+                  type="checkbox"
+                  checked={updateStock}
+                  onChange={(e) => setUpdateStock(e.target.checked)}
+                  className="rounded border-gray-300 text-[#0A0A0A] focus:ring-black h-3.5 w-3.5 cursor-pointer"
+                />
+                <span className="text-[11px] sm:text-xs font-semibold">Update Stock</span>
+              </label>
+
               {queue.length > 0 && (
                 <button
                   type="button"
@@ -1288,17 +1426,24 @@ export const CreateBarcodeModal: React.FC<CreateBarcodeModalProps> = ({
                 type="button"
                 onClick={handleGenerateAndCommitStock}
                 disabled={generating || queue.filter((it) => it.selected).length === 0}
-                className="px-3 py-2 sm:px-6 sm:py-2.5 rounded-xl bg-[#0A0A0A] border border-[#D4AF37] text-[#D4AF37] text-[11px] sm:text-xs font-black uppercase tracking-wider hover:bg-[#1A1A1A] transition-all shadow-md flex items-center gap-1.5 sm:gap-2 cursor-pointer disabled:opacity-50 text-center justify-center shrink-0"
+                className="px-3 py-2 sm:px-6 sm:py-2.5 rounded-xl bg-[#0A0A0A] border border-[#D4AF37] text-[#D4AF37] text-[11px] sm:text-xs font-black uppercase tracking-wider hover:bg-[#1A1A1A] transition-all shadow-md flex items-center gap-1.5 sm:gap-2 cursor-pointer disabled:opacity-50 text-center justify-center shrink-0 min-h-[44px] sm:min-h-0"
               >
                 {generating ? (
                   <>
                     <span className="w-3.5 h-3.5 border-2 border-[#D4AF37]/30 border-t-[#D4AF37] rounded-full animate-spin inline-block" />
-                    <span className="hidden sm:inline">Receiving Stock &amp; Generating...</span>
-                    <span className="sm:hidden">Adding...</span>
+                    <span className="hidden sm:inline">
+                      {updateStock ? 'Receiving Stock & Generating...' : 'Generating Barcodes...'}
+                    </span>
+                    <span className="sm:hidden">Working...</span>
                   </>
                 ) : (
                   <>
-                    <Printer size={15} /> <span>Generate &amp; Add ({totalLabelsNeeded})</span>
+                    <Printer size={15} />{' '}
+                    <span>
+                      {updateStock
+                        ? `Generate & Add Stock (${totalLabelsNeeded})`
+                        : `Generate & Print (${totalLabelsNeeded})`}
+                    </span>
                   </>
                 )}
               </button>

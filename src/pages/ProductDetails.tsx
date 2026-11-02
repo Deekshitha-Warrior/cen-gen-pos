@@ -167,7 +167,7 @@ export default function ProductDetails() {
 
   return (
     <div className="min-h-screen bg-[#fbfaf6] pb-[calc(7.75rem+env(safe-area-inset-bottom))]">
-      <div className="lg:hidden sticky top-0 z-30 border-b border-white/60 bg-[#fbfaf6]/92 px-4 py-3 backdrop-blur sm:px-6">
+      <div className="lg:hidden sticky top-0 z-30 border-b border-white/60 bg-[#fbfaf6]/92 px-4 pb-3 backdrop-blur sm:px-6 pt-[calc(env(safe-area-inset-top)+0.75rem)]">
         <div className="mx-auto flex max-w-3xl items-center justify-between gap-3">
           <Link
             to="/products"
@@ -424,7 +424,7 @@ export default function ProductDetails() {
                   />
                 </div>
                 <div className="space-y-1.5 p-2.5">
-                  <p className="line-clamp-2 text-[11px] font-bold leading-snug text-[#2c392a]">{item.name}</p>
+                  <p className="text-[11px] font-bold leading-snug text-[#2c392a] whitespace-normal [overflow-wrap:anywhere] [word-break:break-word]">{item.name}</p>
                   <p className="text-[10px] font-black text-[#7daa8f]">{formatCurrency(item.offerPrice || item.price)}</p>
                 </div>
               </button>

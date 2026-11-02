@@ -25,6 +25,7 @@ import { formatCurrency } from '../../lib/retail'
 import { useProductStore, useAdminAuthStore } from '../../store/store'
 import { useAlarmStore } from '../../store/alarmStore'
 import { alarmSound } from '../../lib/alarmAudio'
+import { useDebouncedValue } from '../../lib/debounce'
 import { CategoryManagerView } from './CategoryManagerView'
 import { InventoryAnalyticsView } from './InventoryAnalyticsView'
 import { AddEditProductView } from './AddEditProductView'
@@ -38,6 +39,7 @@ export const InventoryTable: React.FC = () => {
   const [items, setItems] = useState<InventoryStockItem[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
+  const [debouncedSearch] = useDebouncedValue(search, 300)
   const [filterStatus, setFilterStatus] = useState<'all' | 'in_stock' | 'low' | 'out'>('all')
 
   // Modals state
@@ -59,7 +61,7 @@ export const InventoryTable: React.FC = () => {
 
       // Alert sound and modal when viewing inventory with low stock
       const lowStockFlagged = data
-        .filter((i) => i.stock > 0 && i.stock <= (i.low_stock_threshold || 5))
+        .filter((i) => i.stock <= (i.low_stock_threshold || 5))
         .map((i) => ({
           id: i.variant_id ? `v-${i.variant_id}` : `p-${i.product_id}`,
           name: i.name,
@@ -93,9 +95,10 @@ export const InventoryTable: React.FC = () => {
       await inventoryService.deleteInventoryItem(item.product_id, item.variant_id)
       await fetchProducts(true)
       await loadData()
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to delete inventory item:', err)
-      alert(err instanceof Error ? err.message : 'Failed to delete item')
+      const errorMsg = err?.message || (typeof err === 'string' ? err : JSON.stringify(err)) || 'Failed to delete item'
+      alert(`Delete Error: ${errorMsg}`)
       setLoading(false)
     }
   }
@@ -106,7 +109,7 @@ export const InventoryTable: React.FC = () => {
 
   // Filter items for Stock Management view
   const filtered = items.filter((item) => {
-    const q = search.toLowerCase().trim()
+    const q = debouncedSearch.toLowerCase().trim()
     const matchesSearch =
       !q ||
       item.name.toLowerCase().includes(q) ||
@@ -119,7 +122,7 @@ export const InventoryTable: React.FC = () => {
 
     const threshold = item.low_stock_threshold || 5
     if (filterStatus === 'out') return item.stock <= 0
-    if (filterStatus === 'low') return item.stock > 0 && item.stock <= threshold
+    if (filterStatus === 'low') return item.stock <= threshold
     if (filterStatus === 'in_stock') return item.stock > threshold
 
     return true
@@ -129,7 +132,7 @@ export const InventoryTable: React.FC = () => {
   const totalSkus = items.length
   const totalUnits = items.reduce((sum, i) => sum + i.stock, 0)
   const outOfStockCount = items.filter((i) => i.stock <= 0).length
-  const lowStockCount = items.filter((i) => i.stock > 0 && i.stock <= (i.low_stock_threshold || 5)).length
+  const lowStockCount = items.filter((i) => i.stock <= (i.low_stock_threshold || 5)).length
   const inStockCount = items.filter((i) => i.stock > (i.low_stock_threshold || 5)).length
   const totalValuation = items.reduce((sum, i) => sum + i.stock * i.price, 0)
 
@@ -187,67 +190,75 @@ export const InventoryTable: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* NAVIGATION / HEADER */}
-      <div className="bg-white border border-[#E8D399] rounded-2xl p-2 sm:p-2.5 shadow-sm flex items-center justify-between gap-3 overflow-x-auto hide-scrollbar">
-        <div className="flex items-center gap-1.5 p-1 bg-[#FBFAF6] border border-gray-200 rounded-xl shrink-0">
-          <button
-            type="button"
-            onClick={() => setActiveTab('stock')}
-            className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap ${
-              activeTab === 'stock'
-                ? 'bg-[#0A0A0A] text-[#D4AF37] shadow-sm'
-                : 'text-gray-600 hover:text-black hover:bg-gray-100'
-            }`}
-          >
-            <Box size={14} /> Stock Management
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab('products')}
-            className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap ${
-              activeTab === 'products'
-                ? 'bg-[#0A0A0A] text-[#D4AF37] shadow-sm'
-                : 'text-gray-600 hover:text-black hover:bg-gray-100'
-            }`}
-          >
-            <Package size={14} /> Add / Edit Products
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab('categories')}
-            className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap ${
-              activeTab === 'categories'
-                ? 'bg-[#0A0A0A] text-[#D4AF37] shadow-sm'
-                : 'text-gray-600 hover:text-black hover:bg-gray-100'
-            }`}
-          >
-            <Tag size={14} /> Categories
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab('analytics')}
-            className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap ${
-              activeTab === 'analytics'
-                ? 'bg-[#0A0A0A] text-[#D4AF37] shadow-sm'
-                : 'text-gray-600 hover:text-black hover:bg-gray-100'
-            }`}
-          >
-            <BarChart3 size={14} /> Analytics &amp; Reports
-          </button>
+      <div className="bg-white border border-[#E8D399] rounded-2xl p-2 sm:p-2.5 shadow-sm flex flex-col gap-2">
+        <div className="flex items-center gap-3">
+          <div className="flex-1 min-w-0 overflow-x-auto hide-scrollbar">
+            <div className="flex items-center gap-1.5 p-1 bg-[#FBFAF6] border border-gray-200 rounded-xl w-max">
+              <button
+                type="button"
+                onClick={() => setActiveTab('stock')}
+                className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap ${
+                  activeTab === 'stock'
+                    ? 'bg-[#0A0A0A] text-[#D4AF37] shadow-sm'
+                    : 'text-gray-600 hover:text-black hover:bg-gray-100'
+                }`}
+              >
+                <Box size={14} /> Stock Management
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('products')}
+                className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap ${
+                  activeTab === 'products'
+                    ? 'bg-[#0A0A0A] text-[#D4AF37] shadow-sm'
+                    : 'text-gray-600 hover:text-black hover:bg-gray-100'
+                }`}
+              >
+                <Package size={14} /> Add / Edit Products
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('categories')}
+                className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap ${
+                  activeTab === 'categories'
+                    ? 'bg-[#0A0A0A] text-[#D4AF37] shadow-sm'
+                    : 'text-gray-600 hover:text-black hover:bg-gray-100'
+                }`}
+              >
+                <Tag size={14} /> Categories
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('analytics')}
+                className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap ${
+                  activeTab === 'analytics'
+                    ? 'bg-[#0A0A0A] text-[#D4AF37] shadow-sm'
+                    : 'text-gray-600 hover:text-black hover:bg-gray-100'
+                }`}
+              >
+                <BarChart3 size={14} /> Analytics &amp; Reports
+              </button>
+            </div>
+          </div>
+          {/* Add Barcode: right-of-tabs on sm+, hidden on xs (Row 2 below handles xs) */}
+          {role === 'admin' && (
+            <button
+              type="button"
+              onClick={() => { setSelectedForReceive(null); setShowReceiveModal(true) }}
+              className="hidden sm:flex shrink-0 min-h-[44px] px-4 py-2.5 rounded-xl bg-[#0A0A0A] border border-[#D4AF37] text-[#D4AF37] text-xs font-black hover:bg-[#1A1A1A] transition-all shadow-md items-center gap-2 cursor-pointer whitespace-nowrap"
+              title="Generate &amp; print barcodes for items"
+            >
+              <Printer size={15} /> Add Barcode
+            </button>
+          )}
         </div>
-
-        {/* Global Add Barcode CTA (Admin Only) */}
+        {/* Row 2: mobile only (< sm), admin only */}
         {role === 'admin' && (
           <button
             type="button"
-            onClick={() => {
-              setSelectedForReceive(null)
-              setShowReceiveModal(true)
-            }}
-            className="px-4 py-2.5 rounded-xl bg-[#0A0A0A] border border-[#D4AF37] text-[#D4AF37] text-xs font-black hover:bg-[#1A1A1A] transition-all shadow-md flex items-center gap-2 cursor-pointer shrink-0 whitespace-nowrap"
-            title="Generate & print barcodes for items"
+            onClick={() => { setSelectedForReceive(null); setShowReceiveModal(true) }}
+            className="sm:hidden w-full min-h-[44px] px-4 py-2.5 rounded-xl bg-[#0A0A0A] border border-[#D4AF37] text-[#D4AF37] text-xs font-black hover:bg-[#1A1A1A] transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer"
+            title="Generate &amp; print barcodes for items"
           >
             <Printer size={15} /> Add Barcode
           </button>
@@ -304,13 +315,13 @@ export const InventoryTable: React.FC = () => {
           <div className="bg-white border border-[#E8D399] rounded-2xl p-4 shadow-sm flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
             {/* Search */}
             <div className="relative flex-1 max-w-md">
-              <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+              <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
               <input
                 type="text"
                 placeholder="Search SKU name, variant, barcode, category..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-300 bg-[#FBFAF6] text-xs font-bold text-gray-900 outline-none focus:border-[#0A0A0A] focus:bg-white"
+                className="w-full pl-10 pr-3 py-2 sm:py-2.5 rounded-xl border border-gray-300 bg-[#FBFAF6] text-[11px] sm:text-xs font-semibold text-gray-900 placeholder:text-gray-400 placeholder:font-normal outline-none focus:border-[#0A0A0A] focus:bg-white"
               />
             </div>
 

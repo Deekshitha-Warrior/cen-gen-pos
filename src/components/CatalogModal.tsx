@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react'
 import { X, Search, ShoppingBag, Edit2, Trash2 } from 'lucide-react'
 import { useProductStore, type Product } from '../store/store'
 import { supabase } from '../lib/supabase'
+import { useDebouncedValue } from '../lib/debounce'
 
 interface CatalogModalProps {
   isOpen: boolean
@@ -14,6 +15,7 @@ type CategoryOption = { id: string | number; name_en: string; is_active?: boolea
 export default function CatalogModal({ isOpen, onClose, onAdd }: CatalogModalProps) {
   const { fetchProducts, products, loading, error } = useProductStore()
   const [search, setSearch] = useState('')
+  const [debouncedSearch] = useDebouncedValue(search, 300)
   const [activeCategory, setActiveCategory] = useState('All')
   const [editingProduct, setEditingProduct] = useState<Product | null>(null)
   const [editForm, setEditForm] = useState({ name: '', category: '', price: '' })
@@ -71,7 +73,7 @@ export default function CatalogModal({ isOpen, onClose, onAdd }: CatalogModalPro
   }, [categoryOptions, products])
 
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase()
+    const q = debouncedSearch.trim().toLowerCase()
     let src = products.filter(p => p.isActive)
     if (activeCategory !== 'All') src = src.filter(p => p.category === activeCategory)
     if (q) src = src.filter(p =>
@@ -80,7 +82,7 @@ export default function CatalogModal({ isOpen, onClose, onAdd }: CatalogModalPro
       p.category.toLowerCase().includes(q)
     )
     return src
-  }, [products, search, activeCategory])
+  }, [products, debouncedSearch, activeCategory])
 
   const startEdit = (p: Product) => {
     setEditingProduct(p)
@@ -147,7 +149,7 @@ export default function CatalogModal({ isOpen, onClose, onAdd }: CatalogModalPro
                   <label className="block text-[10px] font-black text-[#374151] tracking-wider uppercase mb-1.5">Category</label>
                   <select value={editForm.category}
                     onChange={e => setEditForm({...editForm, category: e.target.value})}
-                    className="w-full min-w-0 h-12 px-4 py-3 bg-[#F9FAFB] border border-[#E5E7EB]/60 rounded-xl focus:outline-none focus:border-[#D4AF37] text-[13px] font-bold touch-manipulation">
+                    className="w-full min-w-0 h-10 px-3 bg-[#F9FAFB] border border-[#E5E7EB]/60 rounded-xl focus:outline-none focus:border-[#D4AF37] text-xs sm:text-[13px] font-semibold touch-manipulation cursor-pointer">
                     <option value="">Select category</option>
                     {allCategoryOptions.map(category => <option key={category.id} value={category.name_en}>{category.name_en}</option>)}
                     {!allCategoryOptions.some(category => category.name_en === editForm.category) && editForm.category && (
@@ -159,19 +161,19 @@ export default function CatalogModal({ isOpen, onClose, onAdd }: CatalogModalPro
                   <label className="block text-[10px] font-black text-[#374151] tracking-wider uppercase mb-1.5">Price (₹)</label>
                   <input type="number" value={editForm.price}
                     onChange={e => setEditForm({...editForm, price: e.target.value})}
-                    className="w-full px-4 py-3 bg-[#F9FAFB] border border-[#E5E7EB]/60 rounded-xl focus:outline-none focus:border-[#D4AF37] text-[13px] font-bold text-right" placeholder="0" />
+                    className="w-full h-10 px-3.5 bg-[#F9FAFB] border border-[#E5E7EB]/60 rounded-xl focus:outline-none focus:border-[#D4AF37] text-xs sm:text-[13px] font-semibold text-right placeholder:text-gray-400 placeholder:font-normal" placeholder="0.00" />
                 </div>
               </div>
               <button type="submit" disabled={editLoading}
-                className="mt-4 w-full py-3.5 bg-[#D4AF37] hover:bg-[#065F46] text-white rounded-xl text-[13px] font-black uppercase tracking-wider transition-colors disabled:opacity-50">
+                className="mt-4 w-full h-10 bg-[#D4AF37] hover:bg-[#065F46] text-white rounded-xl text-xs sm:text-[13px] font-bold uppercase tracking-wider transition-colors disabled:opacity-50 cursor-pointer">
                 {editLoading ? 'Saving...' : 'Save Changes'}
               </button>
             </form>
           </>
         ) : (
           <>
-            <div className="flex items-center justify-between p-5 border-b border-[#E5E7EB]/40 bg-[#F9FAFB]">
-              <h2 className="text-[18px] font-black text-[#111111] flex items-center gap-2">
+            <div className="flex items-center justify-between p-4 border-b border-[#E5E7EB]/40 bg-[#F9FAFB]">
+              <h2 className="text-[16px] sm:text-[18px] font-black text-[#111111] flex items-center gap-2">
                 <Search size={18} className="text-[#D4AF37]" />
                 Search Catalog
               </h2>
@@ -185,7 +187,7 @@ export default function CatalogModal({ isOpen, onClose, onAdd }: CatalogModalPro
                 <input type="text" value={search}
                   onChange={e => setSearch(e.target.value)}
                   placeholder="Search by product name, Tamil name, or category..."
-                  className="w-full pl-10 pr-4 py-3 bg-[#FAFAFA] border border-[#E5E7EB]/60 rounded-xl focus:outline-none focus:border-[#D4AF37] text-[13px] font-bold text-[#111111]" />
+                  className="w-full h-10 pl-10 pr-3.5 bg-[#FAFAFA] border border-[#E5E7EB]/60 rounded-xl focus:outline-none focus:border-[#D4AF37] text-xs sm:text-[13px] font-semibold text-[#111111] placeholder:text-gray-400 placeholder:font-normal" />
               </div>
               <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
                 {categories.map(cat => (
@@ -217,21 +219,23 @@ export default function CatalogModal({ isOpen, onClose, onAdd }: CatalogModalPro
                     <div key={product.id}
                       className="bg-white border border-[#E5E7EB]/60 rounded-2xl p-3 flex flex-col justify-between gap-2.5 hover:border-[#D4AF37]/40 hover:shadow-md transition-all group">
                       <div onClick={() => onAdd(product)} className="cursor-pointer w-full">
-                        <h4 className="text-[13px] font-black text-[#111111] leading-snug group-hover:text-[#D4AF37] transition-colors break-words line-clamp-2">
+                        <h4 className="text-[13px] font-black text-[#111111] leading-snug group-hover:text-[#D4AF37] transition-colors whitespace-normal [overflow-wrap:anywhere] [word-break:break-word]">
                           {product.name}
                         </h4>
                         {product.nameTa && (
-                          <p className="text-[10px] font-bold text-[#374151] mt-0.5 truncate">
+                          <p className="text-[10px] font-bold text-[#374151] mt-0.5 whitespace-normal [overflow-wrap:anywhere] [word-break:break-word]">
                             {product.nameTa}
                           </p>
                         )}
                       </div>
                       <div className="pt-2 border-t border-[#E5E7EB]/40 flex items-center justify-between gap-1.5">
-                        <div onClick={() => onAdd(product)} className="cursor-pointer flex flex-col min-w-0">
+                        <div onClick={() => onAdd(product)} className="cursor-pointer flex flex-col min-w-0 flex-1">
                           <span className="text-[14px] font-black text-[#111111] tabular-nums">₹{product.price}</span>
-                          <span className="text-[9px] font-bold text-[#374151] uppercase tracking-wider bg-[#F9FAFB] px-1.5 py-0.5 rounded border border-[#E5E7EB]/40 truncate max-w-[80px]">
-                            {product.category}
-                          </span>
+                          {product.category && (
+                            <span className="text-[9px] font-bold text-[#374151] uppercase tracking-wider bg-[#F9FAFB] px-1.5 py-0.5 rounded border border-[#E5E7EB]/40 whitespace-normal [overflow-wrap:anywhere] [word-break:break-word] w-fit max-w-full leading-tight mt-0.5">
+                              {product.category}
+                            </span>
+                          )}
                         </div>
                         <div className="flex items-center gap-1 shrink-0">
                           <button

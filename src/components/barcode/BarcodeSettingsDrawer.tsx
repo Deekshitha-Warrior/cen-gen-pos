@@ -12,6 +12,8 @@ import {
   saveStoredBarcodeSettings,
 } from '../../lib/barcode'
 import { CreateCustomSizeModal } from './CreateCustomSizeModal'
+import { useVisualViewportHeight } from '../../hooks/useVisualViewportHeight'
+import { lockScroll, unlockScroll } from '../../lib/scrollLock'
 
 interface BarcodeSettingsDrawerProps {
   isOpen: boolean
@@ -53,14 +55,17 @@ export const BarcodeSettingsDrawer: React.FC<BarcodeSettingsDrawerProps> = ({
   // Prevent background scrolling when open
   useEffect(() => {
     if (isOpen) {
-      document.body.style.overflow = 'hidden'
+      lockScroll()
     } else {
-      document.body.style.overflow = ''
+      unlockScroll()
     }
     return () => {
-      document.body.style.overflow = ''
+      unlockScroll()
     }
   }, [isOpen])
+
+  const vvh = useVisualViewportHeight()
+  const modalHeightVar = vvh ? ({ '--modal-vvh': `${vvh}px` } as React.CSSProperties) : undefined
 
   if (!isOpen) return null
 
@@ -84,6 +89,16 @@ export const BarcodeSettingsDrawer: React.FC<BarcodeSettingsDrawerProps> = ({
     onUpdateSettings(updated)
   }
 
+  const handleCalibrationChange = (field: 'rowGapMm' | 'offsetXMm' | 'offsetYMm', value: string) => {
+    const num = parseFloat(value)
+    const updated: BarcodeSettings = {
+      ...settings,
+      [field]: Number.isFinite(num) ? (field === 'rowGapMm' ? Math.max(0, num) : num) : 0,
+    }
+    saveStoredBarcodeSettings(updated)
+    onUpdateSettings(updated)
+  }
+
   const handleDeleteCustomSize = (sizeId: string) => {
     deleteStoredCustomSize(sizeId)
     if (settings.selectedSizeId === sizeId) {
@@ -93,12 +108,23 @@ export const BarcodeSettingsDrawer: React.FC<BarcodeSettingsDrawerProps> = ({
 
   const allSizes = [...DEFAULT_LABEL_SIZES, ...customSizes]
 
+  const overlayStyle: React.CSSProperties = {
+    ...(modalHeightVar ?? {}),
+    height: vvh ? `${vvh}px` : '100dvh',
+  }
+
   return (
     <>
       {createPortal(
-        <div className="fixed inset-0 top-0 left-0 right-0 bottom-0 w-screen h-screen h-[100dvh] z-[9999] flex justify-end bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
+        <div
+          className="fixed inset-0 z-[9999] flex justify-end bg-black/60 backdrop-blur-xs animate-in fade-in duration-150"
+          style={overlayStyle}
+        >
           <div className="absolute inset-0" onClick={onClose} />
-          <div className="relative z-10 w-full max-w-sm bg-white h-screen h-[100dvh] shadow-2xl flex flex-col border-l border-gray-200 animate-in slide-in-from-right duration-200">
+          <div
+            className="relative z-10 w-full max-w-sm bg-white shadow-2xl flex flex-col border-l border-gray-200 animate-in slide-in-from-right duration-200"
+            style={{ height: vvh ? `${vvh}px` : '100dvh' }}
+          >
             {/* Header */}
             <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 bg-[#0A0A0A] text-white shrink-0">
             <h3 className="text-sm font-black tracking-wide text-white">Barcode Settings</h3>
@@ -206,6 +232,38 @@ export const BarcodeSettingsDrawer: React.FC<BarcodeSettingsDrawerProps> = ({
               </div>
             </div>
 
+            {/* Roll printer alignment (fine-tune) */}
+            {settings.printerType === 'label' && (
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-black uppercase tracking-wider text-gray-800">
+                    Roll Alignment (Fine-tune)
+                  </span>
+                </div>
+                <div className="grid grid-cols-3 gap-2 bg-[#FBFAF6] p-3 rounded-xl border border-gray-200">
+                  {([
+                    ['rowGapMm', 'Row gap (mm)'],
+                    ['offsetXMm', 'Shift → (mm)'],
+                    ['offsetYMm', 'Shift ↓ (mm)'],
+                  ] as const).map(([field, label]) => (
+                    <label key={field} className="text-[10px] font-bold text-gray-600">
+                      {label}
+                      <input
+                        type="number"
+                        step="0.1"
+                        value={settings[field]}
+                        onChange={(e) => handleCalibrationChange(field, e.target.value)}
+                        className="mt-1 w-full h-9 px-2 rounded-lg border border-gray-300 bg-white text-xs font-bold text-gray-900 outline-none focus:border-[#0A0A0A]"
+                      />
+                    </label>
+                  ))}
+                </div>
+                <p className="mt-1.5 text-[10px] text-gray-400 font-medium leading-snug">
+                  Row gap = blank space between label rows on the roll (keep 0 if the printer driver feeds to the gap sensor). Use Shift to nudge content if it sits off-centre.
+                </p>
+              </div>
+            )}
+
             {/* Section 3: Additional Fields */}
             <div>
               <div className="flex items-center justify-between mb-2">
@@ -239,7 +297,7 @@ export const BarcodeSettingsDrawer: React.FC<BarcodeSettingsDrawerProps> = ({
                     onChange={() => handleFieldToggle('showItemName')}
                     className="accent-[#0A0A0A] w-4 h-4 rounded cursor-pointer"
                   />
-                  Item Name
+                  Product Name in Footer
                 </label>
                 <label className="flex items-center gap-2.5 text-xs font-bold text-gray-700 cursor-pointer">
                   <input
@@ -255,11 +313,14 @@ export const BarcodeSettingsDrawer: React.FC<BarcodeSettingsDrawerProps> = ({
           </div>
 
           {/* Drawer Footer */}
-          <div className="p-4 border-t border-gray-200 bg-white">
+          <div
+            className="p-4 border-t border-gray-200 bg-white shrink-0 sticky bottom-0 z-20"
+            style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}
+          >
             <button
               type="button"
               onClick={onClose}
-              className="w-full py-2.5 rounded-xl bg-[#0A0A0A] text-[#D4AF37] border border-[#D4AF37] font-black text-xs uppercase tracking-wider hover:bg-[#1A1A1A] transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md"
+              className="w-full py-3 sm:py-2.5 rounded-xl bg-[#0A0A0A] text-[#D4AF37] border border-[#D4AF37] font-black text-xs uppercase tracking-wider hover:bg-[#1A1A1A] transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md min-h-[48px] sm:min-h-0"
             >
               <Check size={14} /> Done
             </button>
